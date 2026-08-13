@@ -27,6 +27,9 @@ func testHandler(t *testing.T) http.Handler {
 	if err := os.WriteFile(filepath.Join(directory, "example.test.zone"), []byte(apiTestZone), 0o640); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(directory, ".roles.json"), []byte("{\"roles\":{\"example.test.\":\"primary\"}}\n"), 0o640); err != nil {
+		t.Fatal(err)
+	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	return New(zones.NewStore(directory, "", nil), logger, false).Handler()
 }

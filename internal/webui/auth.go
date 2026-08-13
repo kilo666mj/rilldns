@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -131,6 +132,19 @@ func (a *authService) actor(request *http.Request) string {
 func validateOIDC(config OIDCConfig) error {
 	if strings.TrimSpace(config.Issuer) == "" || strings.TrimSpace(config.ClientID) == "" || strings.TrimSpace(config.RedirectURL) == "" {
 		return fmt.Errorf("OIDC issuer, client ID, and redirect URL are required when the UI listener is enabled")
+	}
+	redirect, err := url.Parse(config.RedirectURL)
+	if err != nil || redirect.Hostname() == "" {
+		return fmt.Errorf("OIDC redirect URL must be an absolute URL")
+	}
+	if redirect.Scheme != "https" && !(redirect.Scheme == "http" && (redirect.Hostname() == "localhost" || redirect.Hostname() == "127.0.0.1" || redirect.Hostname() == "::1")) {
+		return fmt.Errorf("OIDC redirect URL must use HTTPS (HTTP is allowed only for loopback development)")
+	}
+	if len(config.AllowedSubjects) == 0 && len(config.AllowedEmails) == 0 && len(config.AllowedGroups) == 0 {
+		return fmt.Errorf("at least one OIDC subject, email, or group allowlist entry is required")
+	}
+	if len(config.AllowedEmails) != 0 {
+		return fmt.Errorf("OIDC email allowlists are not supported because the provider's email_verified claim cannot be enforced; use subject or group allowlists")
 	}
 	return nil
 }

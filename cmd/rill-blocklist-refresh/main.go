@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -46,7 +47,15 @@ func run(ctx context.Context, dir, statusPath, merger, configURL string, minimum
 	if err := os.MkdirAll(dir, 0750); err != nil {
 		return fail(err)
 	}
-	client := &http.Client{Timeout: 3 * time.Minute}
+	client := &http.Client{
+		Timeout: 3 * time.Minute,
+		CheckRedirect: func(request *http.Request, via []*http.Request) error {
+			if len(via) >= 5 {
+				return fmt.Errorf("too many redirects")
+			}
+			return validateRemoteURL(request.URL)
+		},
+	}
 	if configURL != "" {
 		var cfg config
 		if err := downloadJSON(ctx, client, configURL, &cfg); err != nil {
@@ -123,7 +132,11 @@ func downloadJSON(ctx context.Context, client *http.Client, url string, value an
 	return json.NewDecoder(f).Decode(value)
 }
 func download(ctx context.Context, client *http.Client, url, path string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	parsed, err := parseRemoteURL(url)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)
 	if err != nil {
 		return err
 	}
@@ -149,6 +162,24 @@ func download(ctx context.Context, client *http.Client, url, path string) error 
 	}
 	if n > maxDownload {
 		return fmt.Errorf("response exceeds %d bytes", maxDownload)
+	}
+	return nil
+}
+
+func parseRemoteURL(raw string) (*url.URL, error) {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return nil, fmt.Errorf("invalid URL: %w", err)
+	}
+	if err := validateRemoteURL(parsed); err != nil {
+		return nil, err
+	}
+	return parsed, nil
+}
+
+func validateRemoteURL(parsed *url.URL) error {
+	if parsed.Scheme != "https" || parsed.Hostname() == "" || parsed.User != nil {
+		return fmt.Errorf("remote URL must be absolute HTTPS without user information")
 	}
 	return nil
 }

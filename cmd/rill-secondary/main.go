@@ -25,6 +25,7 @@ func main() {
 	timeout := flag.Duration("timeout", 15*time.Second, "DNS operation timeout")
 	notifyFrom := flag.String("notify-from", "127.0.0.1", "only accepted NOTIFY source IP")
 	discoverZones := flag.Bool("discover-zones", false, "discover existing zone files and accept new zones notified by the trusted primary")
+	maxZones := flag.Int("max-zones", 1000, "maximum configured and dynamically discovered zones")
 	tsigName := flag.String("tsig-name", "rilldns-transfer.", "TSIG key name")
 	tsigSecretFile := flag.String("tsig-secret-file", "/etc/rilldns/transfer.secret", "file containing base64 TSIG secret")
 	flag.Parse()
@@ -35,7 +36,7 @@ func main() {
 	service, err := secondary.New(secondary.Config{
 		Primary: *primary, ProbePrimary: *probePrimary, Listen: *listen, Zones: strings.Split(*zones, ","), OutputDir: *output,
 		StatusFile: *status, Refresh: *refresh, Timeout: *timeout, NotifyFrom: net.ParseIP(*notifyFrom),
-		TSIGName: *tsigName, TSIGSecret: strings.TrimSpace(string(secret)), DiscoverZones: *discoverZones,
+		TSIGName: *tsigName, TSIGSecret: strings.TrimSpace(string(secret)), DiscoverZones: *discoverZones, MaxZones: *maxZones,
 	})
 	if err != nil {
 		fatal(err)

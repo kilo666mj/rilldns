@@ -4,6 +4,7 @@ import (
 	"embed"
 	"io/fs"
 	"net/http"
+	"net/url"
 )
 
 //go:embed static/*
@@ -47,7 +48,18 @@ func New(api http.Handler, config OIDCConfig) (http.Handler, error) {
 	mux.Handle("GET /{$}", auth.oidc.Require(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		http.ServeFileFS(writer, request, static, "index.html")
 	})))
-	return securityHeaders(mux), nil
+	redirect, _ := url.Parse(config.RedirectURL)
+	return securityHeaders(requireSameOrigin(mux, redirect.Scheme+"://"+redirect.Host)), nil
+}
+
+func requireSameOrigin(next http.Handler, origin string) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodGet && request.Method != http.MethodHead && request.Method != http.MethodOptions && request.Header.Get("Origin") != origin {
+			http.Error(writer, "cross-origin request denied", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(writer, request)
+	})
 }
 
 func securityHeaders(next http.Handler) http.Handler {
@@ -56,6 +68,7 @@ func securityHeaders(next http.Handler) http.Handler {
 		writer.Header().Set("Referrer-Policy", "no-referrer")
 		writer.Header().Set("X-Content-Type-Options", "nosniff")
 		writer.Header().Set("X-Frame-Options", "DENY")
+		writer.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 		next.ServeHTTP(writer, request)
 	})
 }

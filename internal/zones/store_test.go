@@ -46,9 +46,27 @@ func newTestStore(t *testing.T, verifier Verifier) (*Store, string) {
 	if err := os.WriteFile(zonePath, []byte(testZone), 0o640); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(directory, ".roles.json"), []byte("{\"roles\":{\"example.test.\":\"primary\"}}\n"), 0o640); err != nil {
+		t.Fatal(err)
+	}
 	store := NewStore(directory, filepath.Join(directory, "audit.jsonl"), verifier)
 	store.now = func() time.Time { return time.Date(2026, 8, 11, 12, 0, 0, 0, time.UTC) }
 	return store, zonePath
+}
+
+func TestMissingRoleDefaultsToReadOnly(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(directory, "example.test.zone"), []byte(testZone), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	store := NewStore(directory, "", nil)
+	zone, err := store.Get("example.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if zone.Role != "secondary" {
+		t.Fatalf("unclassified zone role = %q", zone.Role)
+	}
 }
 
 func TestGetGroupsRRsets(t *testing.T) {

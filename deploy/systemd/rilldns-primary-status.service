@@ -6,6 +6,12 @@ Requires=rilldns.service
 [Service]
 Type=oneshot
 ExecStart=/usr/local/bin/rill-zone-status
-User=root
+User=rilldns
 Group=rilldns
 UMask=0077
+NoNewPrivileges=yes
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/rilldns

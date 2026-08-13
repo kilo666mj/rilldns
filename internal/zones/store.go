@@ -422,7 +422,9 @@ func roleFor(roles map[string]string, zone string) string {
 	if role := roles[zone]; role != "" {
 		return role
 	}
-	return "primary"
+	// Existing zone files that have not been explicitly classified must never
+	// become writable merely because the role manifest is absent or incomplete.
+	return "secondary"
 }
 
 func (s *Store) loadRoles() (map[string]string, error) {

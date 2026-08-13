@@ -3,6 +3,7 @@ package zones
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/miekg/dns"
@@ -12,6 +13,8 @@ type DNSVerifier struct {
 	Address       string
 	NotifyAddress string
 	Interval      time.Duration
+	TSIGName      string
+	TSIGSecret    string
 }
 
 func (v DNSVerifier) Notify(ctx context.Context, zone string) error {
@@ -20,7 +23,12 @@ func (v DNSVerifier) Notify(ctx context.Context, zone string) error {
 	}
 	message := new(dns.Msg)
 	message.SetNotify(dns.Fqdn(zone))
-	client := &dns.Client{Net: "udp", Timeout: 3 * time.Second}
+	if v.TSIGName == "" || v.TSIGSecret == "" {
+		return fmt.Errorf("NOTIFY requires a TSIG name and secret")
+	}
+	name := dns.Fqdn(strings.ToLower(v.TSIGName))
+	message.SetTsig(name, dns.HmacSHA256, 300, time.Now().Unix())
+	client := &dns.Client{Net: "udp", Timeout: 3 * time.Second, TsigSecret: map[string]string{name: v.TSIGSecret}}
 	response, _, err := client.ExchangeContext(ctx, message, v.NotifyAddress)
 	if err != nil {
 		return err

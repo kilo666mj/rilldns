@@ -32,6 +32,7 @@ type Config struct {
 	TSIGSecret    string
 	Now           func() time.Time
 	DiscoverZones bool
+	MaxZones      int
 }
 
 type Status struct {
@@ -77,6 +78,12 @@ func New(config Config) (*Service, error) {
 	if config.Now == nil {
 		config.Now = time.Now
 	}
+	if config.MaxZones <= 0 {
+		config.MaxZones = 1000
+	}
+	if len(config.Zones) > config.MaxZones {
+		return nil, fmt.Errorf("configured zones exceed maximum of %d", config.MaxZones)
+	}
 	config.TSIGName = strings.ToLower(dns.Fqdn(config.TSIGName))
 	if config.TSIGName == "." || config.TSIGSecret == "" {
 		return nil, errors.New("TSIG name and secret are required")
@@ -114,8 +121,9 @@ func (s *Service) Run(ctx context.Context) error {
 			return err
 		}
 	}
-	serverUDP := &dns.Server{Addr: s.config.Listen, Net: "udp", Handler: dns.HandlerFunc(s.handleNotify)}
-	serverTCP := &dns.Server{Addr: s.config.Listen, Net: "tcp", Handler: dns.HandlerFunc(s.handleNotify)}
+	tsigSecrets := map[string]string{s.config.TSIGName: s.config.TSIGSecret}
+	serverUDP := &dns.Server{Addr: s.config.Listen, Net: "udp", Handler: dns.HandlerFunc(s.handleNotify), TsigSecret: tsigSecrets}
+	serverTCP := &dns.Server{Addr: s.config.Listen, Net: "tcp", Handler: dns.HandlerFunc(s.handleNotify), TsigSecret: tsigSecrets}
 	errorsChannel := make(chan error, 2)
 	go func() { errorsChannel <- serverUDP.ListenAndServe() }()
 	go func() { errorsChannel <- serverTCP.ListenAndServe() }()
@@ -153,13 +161,18 @@ func (s *Service) handleNotify(writer dns.ResponseWriter, request *dns.Msg) {
 	}
 	remoteIP := remoteAddressIP(writer.RemoteAddr())
 	zone := strings.ToLower(dns.Fqdn(request.Question[0].Name))
-	if s.config.NotifyFrom == nil || !s.config.NotifyFrom.Equal(remoteIP) || (!s.config.DiscoverZones && !s.hasZone(zone)) {
+	tsig := request.IsTsig()
+	if tsig == nil || strings.ToLower(tsig.Hdr.Name) != s.config.TSIGName || writer.TsigStatus() != nil || s.config.NotifyFrom == nil || !s.config.NotifyFrom.Equal(remoteIP) || (!s.config.DiscoverZones && !s.hasZone(zone)) {
 		response.Rcode = dns.RcodeRefused
 		_ = writer.WriteMsg(response)
 		return
 	}
 	if s.config.DiscoverZones && !s.hasZone(zone) {
-		s.addZone(zone)
+		if !s.addZone(zone) {
+			response.Rcode = dns.RcodeRefused
+			_ = writer.WriteMsg(response)
+			return
+		}
 	}
 	_ = writer.WriteMsg(response)
 	s.queueNotify(zone)
@@ -176,7 +189,9 @@ func (s *Service) discoverZones() error {
 		}
 		zone := strings.TrimSuffix(entry.Name(), ".zone") + "."
 		if _, ok := dns.IsDomainName(zone); ok && !s.hasZone(zone) {
-			s.addZone(strings.ToLower(zone))
+			if !s.addZone(strings.ToLower(zone)) {
+				return fmt.Errorf("discovered zones exceed maximum of %d", s.config.MaxZones)
+			}
 		}
 	}
 	return nil
@@ -204,16 +219,20 @@ func (s *Service) hasZone(zone string) bool {
 	return false
 }
 
-func (s *Service) addZone(zone string) {
+func (s *Service) addZone(zone string) bool {
 	s.zonesMu.Lock()
 	defer s.zonesMu.Unlock()
 	for _, configured := range s.config.Zones {
 		if configured == zone {
-			return
+			return true
 		}
+	}
+	if len(s.config.Zones) >= s.config.MaxZones {
+		return false
 	}
 	s.config.Zones = append(s.config.Zones, zone)
 	sort.Strings(s.config.Zones)
+	return true
 }
 
 func (s *Service) zones() []string {

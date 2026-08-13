@@ -13,7 +13,41 @@ import (
 func testOIDCConfig() OIDCConfig {
 	return OIDCConfig{
 		Issuer: "https://id.example", ClientID: "rilldns", RedirectURL: "https://dns.example/api/auth/callback",
-		SessionKey: base64.RawURLEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef")),
+		AllowedSubjects: []string{"subject-1"},
+		SessionKey:      base64.RawURLEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef")),
+	}
+}
+
+func TestOIDCConfigurationFailsClosed(t *testing.T) {
+	config := testOIDCConfig()
+	config.AllowedSubjects = nil
+	if _, err := New(http.NotFoundHandler(), config); err == nil || !strings.Contains(err.Error(), "allowlist") {
+		t.Fatalf("empty allowlist error = %v", err)
+	}
+	config.AllowedSubjects = []string{"subject-1"}
+	config.RedirectURL = "http://dns.example/api/auth/callback"
+	if _, err := New(http.NotFoundHandler(), config); err == nil || !strings.Contains(err.Error(), "HTTPS") {
+		t.Fatalf("insecure redirect error = %v", err)
+	}
+}
+
+func TestBrowserMutationsRequireSameOrigin(t *testing.T) {
+	handler, err := New(http.NotFoundHandler(), testOIDCConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("missing Origin status = %d", response.Code)
+	}
+	request = httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
+	request.Header.Set("Origin", "https://dns.example")
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusFound {
+		t.Fatalf("same-origin status = %d", response.Code)
 	}
 }
 

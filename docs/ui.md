@@ -14,8 +14,9 @@ https://dns.example.net/api/auth/callback
 
 Copy [`deploy/systemd/ui.env.example`](../deploy/systemd/ui.env.example) to
 `/etc/rilldns/ui.env`, insert the client ID and secret, and set at least one
-subject, email, or group allowlist when access should be narrower than all
-Pocket ID users. The file must be owned by root with mode `0600`.
+subject or group allowlist. RillDNS refuses to start with an empty allowlist,
+and email allowlists are rejected because an unverified email claim is not a
+safe authorization identity. The file must be owned by root with mode `0600`.
 
 Generate the shared encrypted-session key once and install the same value on
 both DNS nodes:
