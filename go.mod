@@ -5,7 +5,7 @@ go 1.26
 require (
 	github.com/dnstap/golang-dnstap v0.4.0
 	github.com/kilo666mj/oidcrp v0.1.0
-	github.com/miekg/dns v1.1.70
+	github.com/miekg/dns v1.1.72
 	github.com/modelcontextprotocol/go-sdk v1.6.1
 	google.golang.org/protobuf v1.23.0
 )
