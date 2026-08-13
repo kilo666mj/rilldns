@@ -66,3 +66,30 @@ The files under [`deploy/systemd`](../deploy/systemd),
 [`deploy/nginx`](../deploy/nginx), and
 [`deploy/prometheus`](../deploy/prometheus) are examples. Adapt addresses,
 firewall policy, paths, users, and service dependencies to your environment.
+
+## Tagged releases and deployment
+
+Tags matching `v*` run the same test and build checks as pull requests, build
+static `linux/amd64` and `linux/arm64` command bundles, publish checksums and a
+GitHub Release, and then enter the protected `production` environment. After
+its required approval, deployment installs and verifies the secondary before
+touching the primary. A failed service restart or API health check restores the
+previous binaries on that node.
+
+Configure these GitHub Environment values before creating a release tag:
+
+- secrets `RILLDNS_PRIMARY_HOST`, `RILLDNS_SECONDARY_HOST`,
+  `RILLDNS_SSH_USER`, `RILLDNS_SSH_PRIVATE_KEY`, and
+  `RILLDNS_SSH_KNOWN_HOSTS`;
+- variables `RILLDNS_PRIMARY_ARCH` and `RILLDNS_SECONDARY_ARCH`, each set to
+  `amd64` or `arm64`;
+- a required reviewer on the `production` environment.
+
+The deployment account needs narrowly scoped SSH access and passwordless sudo
+for the installer operations. Use a dedicated key and pinned `known_hosts`
+entries. Create releases only from protected `main`, for example:
+
+```sh
+git tag -s v0.1.0 -m 'RillDNS v0.1.0'
+git push origin v0.1.0
+```
