@@ -3,7 +3,9 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -27,3 +29,121 @@ jobs:
         run: docker compose config --quiet
       - name: Check diff hygiene
         run: git diff --check
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build all commands
+        run: go build ./...
+
+  release:
+    needs: [test, build]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build release bundles
+        env:
+          CGO_ENABLED: "0"
+          GOOS: linux
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "${GITHUB_SHA}" origin/main || {
+            echo "release tags must point to protected main" >&2
+            exit 1
+          }
+          commands="blocklist-merge rill-api rill-blocklist-refresh rill-diff rill-mcp rill-notify rill-reconcile rill-secondary rill-telemetry rill-zone-status"
+          mkdir -p dist
+          for arch in amd64 arm64; do
+            bundle="dist/rilldns-${VERSION}-linux-${arch}"
+            mkdir -p "${bundle}/bin"
+            for command in ${commands}; do
+              GOARCH="${arch}" go build -trimpath -ldflags "-s -w" \
+                -o "${bundle}/bin/${command}" "./cmd/${command}"
+            done
+            cp scripts/install-release.sh "${bundle}/install-release.sh"
+            tar -C dist -czf "${bundle}.tar.gz" "$(basename "${bundle}")"
+            rm -rf "${bundle}"
+          done
+          (cd dist && sha256sum ./*.tar.gz > SHA256SUMS)
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3
+        with:
+          generate_release_notes: true
+          files: |
+            dist/rilldns-*.tar.gz
+            dist/SHA256SUMS
+
+  deploy:
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: rilldns-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PRIMARY_HOST: ${{ secrets.RILLDNS_PRIMARY_HOST }}
+      PRIMARY_ARCH: ${{ vars.RILLDNS_PRIMARY_ARCH }}
+      SECONDARY_HOST: ${{ secrets.RILLDNS_SECONDARY_HOST }}
+      SECONDARY_ARCH: ${{ vars.RILLDNS_SECONDARY_ARCH }}
+      SSH_USER: ${{ secrets.RILLDNS_SSH_USER }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Validate deployment configuration
+        run: |
+          set -euo pipefail
+          test -n "${PRIMARY_HOST}" && test -n "${SECONDARY_HOST}" && test -n "${SSH_USER}"
+          case "${PRIMARY_ARCH}" in amd64|arm64) ;; *) echo "invalid primary architecture" >&2; exit 1;; esac
+          case "${SECONDARY_ARCH}" in amd64|arm64) ;; *) echo "invalid secondary architecture" >&2; exit 1;; esac
+      - name: Configure deployment SSH identity
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.RILLDNS_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.RILLDNS_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 0700 ~/.ssh
+          printf '%s\n' "${SSH_PRIVATE_KEY}" > ~/.ssh/id_ed25519
+          printf '%s\n' "${SSH_KNOWN_HOSTS}" > ~/.ssh/known_hosts
+          chmod 0600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+      - name: Download and verify release bundles
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release download "${VERSION}" --repo "${GITHUB_REPOSITORY}" --dir dist
+          (cd dist && sha256sum --check SHA256SUMS)
+      - name: Deploy and verify secondary
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          archive="rilldns-${VERSION}-linux-${SECONDARY_ARCH}.tar.gz"
+          scp "dist/${archive}" "${SSH_USER}@${SECONDARY_HOST}:/tmp/${archive}"
+          ssh "${SSH_USER}@${SECONDARY_HOST}" sudo -n /bin/sh -s -- secondary "${VERSION}" "/tmp/${archive}" < scripts/install-release.sh
+      - name: Deploy and verify primary
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          archive="rilldns-${VERSION}-linux-${PRIMARY_ARCH}.tar.gz"
+          scp "dist/${archive}" "${SSH_USER}@${PRIMARY_HOST}:/tmp/${archive}"
+          ssh "${SSH_USER}@${PRIMARY_HOST}" sudo -n /bin/sh -s -- primary "${VERSION}" "/tmp/${archive}" < scripts/install-release.sh
