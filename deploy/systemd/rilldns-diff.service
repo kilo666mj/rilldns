@@ -1,0 +1,11 @@
+[Unit]
+Description=Compare RillDNS primary and secondary authoritative zones
+After=network-online.target rilldns.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/rill-diff -source 127.0.0.1:1056 -target 192.0.2.11:1056 -source-tsig-name rilldns-transfer. -source-tsig-secret-file /etc/rilldns/transfer.secret -target-tsig-name rilldns-transfer. -target-tsig-secret-file /etc/rilldns/transfer.secret -report-file /var/lib/rilldns/differential-report.json -status-file /var/lib/rilldns/status/differential.json internal lab.example 2.0.192.in-addr.arpa
+User=root
+Group=rilldns
+UMask=0077
+Nice=10

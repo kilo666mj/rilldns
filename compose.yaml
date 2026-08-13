@@ -1,0 +1,16 @@
+services:
+  rilldns:
+    image: coredns/coredns:1.14.6
+    command: -conf /etc/rilldns/Corefile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:1053:53/udp"
+      - "127.0.0.1:1053:53/tcp"
+      - "127.0.0.1:8080:8080/tcp"
+      - "127.0.0.1:8181:8181/tcp"
+      - "127.0.0.1:9153:9153/tcp"
+    volumes:
+      - ./config/Corefile:/etc/rilldns/Corefile:ro
+      - ./data/zones:/data/zones:ro
+      - ./data/blocking:/data/blocking:ro
+    read_only: true

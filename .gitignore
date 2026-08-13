@@ -1,0 +1,7 @@
+/bin/
+/dist/
+/data/blocking/merged.hosts
+/data/blocking/merged.hosts.tmp
+/data/zones/.history/
+*.log
+/.lavish/

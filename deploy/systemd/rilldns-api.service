@@ -1,0 +1,41 @@
+[Unit]
+Description=RillDNS management API
+After=network-online.target rilldns.service
+Wants=network-online.target
+Requires=rilldns.service
+
+[Service]
+Type=simple
+User=rilldns
+Group=rilldns
+UMask=0077
+EnvironmentFile=-/etc/rilldns/ui.env
+ExecStartPre=+/usr/bin/install -d -o root -g rilldns -m 0770 /var/lib/rilldns/blocking
+ExecStart=/usr/local/bin/rill-api -listen 127.0.0.1:8053 -metrics-listen 0.0.0.0:18053 -zone-dir /var/lib/rilldns/zones -audit-log /var/lib/rilldns/audit.jsonl -dns-address 127.0.0.1:1056 -notify-address 192.0.2.11:1054
+Restart=on-failure
+RestartSec=2s
+NoNewPrivileges=yes
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectClock=yes
+ProtectControlGroups=yes
+ProtectHome=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/rilldns
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

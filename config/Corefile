@@ -1,0 +1,54 @@
+# RillDNS proof-of-concept configuration.
+# It is intentionally bound to localhost by compose.yaml and is not production-ready.
+
+(managed-zones) {
+    auto {
+        directory /data/zones ^(.*)\.zone$ {1}
+        reload 10s
+    }
+}
+
+.:1056 {
+    bind 127.0.0.1
+    errors
+    import managed-zones
+}
+
+.:53 {
+    errors
+    health 0.0.0.0:8080
+    ready 0.0.0.0:8181
+    prometheus 0.0.0.0:9153
+
+    import managed-zones
+
+    acl {
+        allow net 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 127.0.0.0/8 ::1/128
+        block net *
+    }
+
+    hosts /data/blocking/merged.hosts {
+        ttl 60
+        no_reverse
+        reload 5s
+        fallthrough
+    }
+
+    cache {
+        success 10000
+        denial 5000
+        serve_stale 1h
+    }
+
+    # Replace these example public resolvers with the upstreams appropriate for
+    # your environment.
+    forward . 1.1.1.1 9.9.9.9 {
+        health_check 5s
+        max_fails 2
+        failover SERVFAIL REFUSED
+        failfast_all_unhealthy_upstreams
+    }
+
+    loop
+    reload 10s 0s
+}

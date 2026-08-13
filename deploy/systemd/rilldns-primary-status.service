@@ -1,0 +1,11 @@
+[Unit]
+Description=Validate RillDNS primary authoritative zones
+After=network-online.target rilldns.service
+Requires=rilldns.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/rill-zone-status
+User=root
+Group=rilldns
+UMask=0077

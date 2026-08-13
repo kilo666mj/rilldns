@@ -1,0 +1,3 @@
+# One source per line. Blank lines and comments are ignored.
+https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts
+https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/wildcard/multi-onlydomains.txt

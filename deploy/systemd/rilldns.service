@@ -1,0 +1,41 @@
+[Unit]
+Description=RillDNS proof-of-concept DNS service
+Documentation=https://coredns.io/manual/toc/
+After=network-online.target
+Wants=network-online.target
+Requires=rilldns-telemetry.service
+After=rilldns-telemetry.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/rilldns -conf /etc/rilldns/Corefile
+ExecReload=/bin/kill -SIGUSR1 $MAINPID
+Restart=on-failure
+RestartSec=2s
+User=rilldns
+Group=rilldns
+UMask=0077
+NoNewPrivileges=yes
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectClock=yes
+ProtectControlGroups=yes
+ProtectHome=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectSystem=strict
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target

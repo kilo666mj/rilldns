@@ -1,0 +1,16 @@
+$ORIGIN example.test.
+$TTL 300
+
+@ IN SOA ns1.example.test. hostmaster.example.test. (
+    2026081101 ; serial
+    300        ; refresh
+    60         ; retry
+    86400      ; expire
+    60         ; negative cache TTL
+)
+
+@       IN NS    ns1.example.test.
+ns1     IN A     192.0.2.53
+www     IN A     192.0.2.10
+api     IN CNAME www.example.test.
+service IN AAAA  2001:db8::10

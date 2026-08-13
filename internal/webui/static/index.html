@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0b0d0c">
+  <title>RillDNS</title>
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="rail">
+      <div class="logo"><span class="glyph" aria-hidden="true"><svg viewBox="0 0 64 64"><path d="M18 8v10c0 8 12 8 12 16s-12 8-12 16v6M46 8v10c0 8-12 8-12 16s12 8 12 16v6"/><circle cx="18" cy="8" r="5"/><circle cx="46" cy="56" r="5"/></svg></span><span class="wordmark">rilldns<span class="build">CONTROL / 0.1.0</span></span></div>
+      <nav class="rail-nav"><button class="nav active" data-view="dashboard"><span>01 / Overview</span></button><button class="nav" data-view="zones"><span>02 / Zones</span></button><button class="nav" data-view="blocking"><span>03 / Blocking</span></button></nav>
+      <div class="rail-foot"><div class="user">OIDC<span>AUTHENTICATED / 12H</span></div><div class="live"><i class="pulse"></i> SYSTEM CONNECTED</div><form method="post" action="/api/auth/logout"><button class="signout">SIGN OUT</button></form></div>
+    </aside>
+    <section class="workspace">
+      <header class="topbar"><div class="crumb">RILLDNS&nbsp; / &nbsp;<strong id="crumb">OVERVIEW</strong></div><div class="top-actions"><span class="stamp" id="sync-time">SYNC —</span><button class="icon-btn" id="refresh" title="Refresh" aria-label="Refresh">↻</button><button class="action" id="quick-change">+ ADD RECORD</button></div></header>
+      <main>
+        <section id="notice" class="notice hidden"></section>
+        <section id="dashboard" class="view">
+          <div class="section-head"><div><p class="eyebrow">PRODUCTION FABRIC</p><h1>Resolver state</h1></div><p>DNS SERVICE · PRIMARY PATH · LIVE CONTROL PLANE</p></div>
+          <div class="status-strip" id="health-cards"></div>
+          <section class="chart-section"><div class="chart-section-head"><div><p class="eyebrow">QUERY TELEMETRY</p><h2>Traffic history</h2></div><select id="chart-range" aria-label="Chart range"><option value="1h">LAST 1H</option><option value="6h" selected>LAST 6H</option><option value="24h">LAST 24H</option><option value="7d">LAST 7D</option></select></div><div class="chart-grid" id="chart-grid"><div class="chart-loading">COLLECTING HISTORY</div></div></section>
+          <div class="overview-grid">
+            <section class="module"><div class="module-head"><h2>Live topology</h2><span class="tag">PACKET PATH / PRIMARY</span></div><div class="topology"><svg viewBox="0 0 800 320" preserveAspectRatio="none" aria-hidden="true"><g class="routes"><path d="M160 78 C270 78 260 152 370 152"/><path d="M490 152 C585 152 570 78 680 78"/><path d="M490 165 C610 165 600 255 680 255"/><path d="M370 174 C270 174 270 258 160 258"/></g><g class="traffic"><path d="M160 78 C270 78 260 152 370 152"/><path d="M490 165 C610 165 600 255 680 255"/></g></svg><div class="node primary-node"><i></i><b>PRIMARY</b><small>WRITABLE PRIMARY</small></div><div class="node master-node"><i></i><b>SECONDARY / VIP</b><small>PRODUCTION :53</small></div><div class="node proxy-node"><b>REVERSE PROXY</b><small>CONTROL PROXY</small></div><div class="node client-node"><i></i><b>LAN CLIENTS</b><small>QUERY FLOW</small></div><div class="node upstream-node"><i></i><b>WG RESOLVERS</b><small>3 HEALTHY</small></div></div></section>
+            <section class="module"><div class="module-head"><h2>Event trace</h2><span class="tag">CURRENT STATE</span></div><div class="event-list" id="event-list"></div></section>
+          </div>
+          <section class="module zone-registry"><div class="module-head"><h2>Zone registry</h2><span id="zone-count" class="tag"></span></div><div class="table-wrap"><table><thead><tr><th>Zone</th><th>Role</th><th>SOA serial</th><th>Revision</th></tr></thead><tbody id="zone-summary"></tbody></table></div></section>
+        </section>
+        <section id="zones" class="view hidden">
+          <div class="section-head"><div><p class="eyebrow">AUTHORITATIVE DATA</p><h1>Zone registry</h1></div><div class="header-actions"><button class="button secondary" id="new-zone">NEW ZONE</button><button class="action" id="zone-add-record">+ ADD RECORD</button></div></div>
+          <div class="zone-layout"><aside class="module zone-list" id="zone-list"></aside><section class="module zone-detail" id="zone-detail"><div class="empty">SELECT A ZONE TO INSPECT RRSETS</div></section></div>
+        </section>
+        <section id="blocking" class="view hidden">
+          <div class="section-head"><div><p class="eyebrow">QUERY POLICY</p><h1>Blocking fabric</h1></div><p>ATOMIC COMPILE · FAILURE RETAINS LAST KNOWN GOOD SNAPSHOT</p></div>
+          <div class="blocking-summary"><section class="module"><div class="module-head"><h2>Compiled snapshot</h2><span class="tag">HEALTHY</span></div><div class="blocking-number" id="blocking-count">—</div><div class="blocking-caption">UNIQUE BLOCKED DOMAINS</div><div class="meter"><i></i></div></section><section class="module"><div class="module-head"><h2>Policy state</h2><span class="tag">REVISIONED</span></div><div class="policy-stats" id="policy-stats"></div></section></div>
+          <section class="chart-section"><div class="chart-section-head"><div><p class="eyebrow">PRIVACY-PRESERVING AGGREGATES</p><h2>Blocking activity</h2></div><p class="chart-note">NO DOMAIN OR CLIENT HISTORY RETAINED</p></div><div class="chart-grid blocking-charts" id="blocking-chart-grid"><div class="chart-loading">COLLECTING HISTORY</div></div></section>
+          <form class="module form blocking-form" id="blocking-form"><div class="module-head"><h2>Source manifests and overrides</h2><span class="tag">EDIT POLICY</span></div><div class="form-body"><label>HTTPS SOURCES<textarea id="sources" rows="5"></textarea></label><div class="two"><label>ALLOWED DOMAINS<textarea id="allow" rows="8"></textarea></label><label>DENIED DOMAINS<textarea id="deny" rows="8"></textarea></label></div><div class="actions"><button type="button" class="button secondary" id="plan-blocking">VALIDATE</button><button class="button primary">PUBLISH CONFIGURATION</button></div></div></form>
+        </section>
+      </main>
+    </section>
+  </div>
+  <dialog id="dialog"><form method="dialog" class="dialog-card"><button class="close" value="cancel" aria-label="Close">×</button><div id="dialog-content"></div></form></dialog>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

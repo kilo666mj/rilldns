@@ -1,0 +1,38 @@
+[Unit]
+Description=RillDNS privacy-preserving aggregate query telemetry
+After=network-online.target
+Wants=network-online.target
+Before=rilldns.service
+
+[Service]
+Type=simple
+User=rilldns
+Group=rilldns
+UMask=0077
+ExecStart=/usr/local/bin/rill-telemetry -dnstap-listen 127.0.0.1:6000 -metrics-listen 127.0.0.1:19154 -blocklist /var/lib/rilldns/blocking/merged.hosts
+Restart=on-failure
+RestartSec=2s
+NoNewPrivileges=yes
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectClock=yes
+ProtectControlGroups=yes
+ProtectHome=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectSystem=strict
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target

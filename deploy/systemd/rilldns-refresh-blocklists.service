@@ -1,0 +1,13 @@
+[Unit]
+Description=Refresh RillDNS DNS blocklists
+After=network-online.target rilldns.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/rilldns/blocklists.env
+ExecStart=/usr/local/bin/rill-blocklist-refresh
+User=root
+Group=rilldns
+UMask=0077
+Nice=10

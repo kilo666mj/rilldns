@@ -1,0 +1,3 @@
+# Domain-only or hosts-file entries accepted.
+ads.example.test
+tracker.example.test

@@ -1,0 +1,32 @@
+name: Bug report
+description: Report reproducible incorrect behavior
+body:
+  - type: markdown
+    attributes:
+      value: Do not include credentials, private zones, client data, or internal inventory.
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Observed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: RillDNS/CoreDNS version
+  - type: textarea
+    id: environment
+    attributes:
+      label: Sanitized environment details

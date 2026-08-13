@@ -1,0 +1,40 @@
+[Unit]
+Description=RillDNS persistent secondary replication
+After=network-online.target rilldns.service
+Wants=network-online.target
+Requires=rilldns.service
+
+[Service]
+Type=simple
+User=rilldns
+Group=rilldns
+UMask=0077
+ExecStartPre=+/usr/bin/install -d -o rilldns -g rilldns -m 0750 /var/lib/rilldns/zones /var/lib/rilldns/status
+ExecStart=/usr/local/bin/rill-secondary -primary 192.0.2.10:1056 -probe-primary 192.0.2.10:1056 -listen 192.0.2.11:1054 -notify-from 192.0.2.10 -discover-zones -tsig-name rilldns-transfer. -tsig-secret-file /etc/rilldns/transfer.secret -output /var/lib/rilldns/zones -status /var/lib/rilldns/status/zones.json
+Restart=on-failure
+RestartSec=2s
+NoNewPrivileges=yes
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectClock=yes
+ProtectControlGroups=yes
+ProtectHome=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/rilldns
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,7 @@
+scrape_configs:
+  - job_name: rilldns
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - dns-primary.example.net:18053
+          - dns-secondary.example.net:18053

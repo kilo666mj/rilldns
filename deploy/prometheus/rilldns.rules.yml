@@ -1,0 +1,59 @@
+groups:
+  - name: rilldns
+    rules:
+      - alert: RillDNSRefreshUnhealthy
+        expr: rilldns_refresh_healthy == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RillDNS refresh unhealthy on {{ $labels.instance }}"
+          description: "A zone, blocklist, staleness, or DNSSEC-expiry health check is failing."
+      - alert: RillDNSZoneRefreshStale
+        expr: time() - rilldns_zone_refresh_last_success_seconds > 7200
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RillDNS zone refresh stale on {{ $labels.instance }}"
+          description: "No successful authoritative zone validation or replication has completed in two hours."
+      - alert: RillDNSBlocklistRefreshStale
+        expr: time() - rilldns_blocklist_refresh_last_success_seconds > 93600
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RillDNS blocklist refresh stale on {{ $labels.instance }}"
+          description: "No successful blocklist refresh has completed in 26 hours."
+      - alert: RillDNSDNSSECSignatureExpiring
+        expr: rilldns_dnssec_earliest_expiry_seconds - time() < 43200
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RillDNS DNSSEC signature expiring on {{ $labels.instance }}"
+          description: "The earliest transferred RRSIG expires in under 12 hours."
+      - alert: RillDNSBlocklistUnexpectedlySmall
+        expr: rilldns_blocklist_domains < 100000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RillDNS blocklist unexpectedly small on {{ $labels.instance }}"
+          description: "The published RillDNS blocklist contains fewer than 100,000 domains."
+      - alert: RillDNSDifferentialMismatch
+        expr: rilldns_differential_mismatches > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RillDNS primary and secondary differ on {{ $labels.instance }}"
+          description: "Authoritative AXFR records or SOA serials do not match."
+      - alert: RillDNSDifferentialStale
+        expr: time() - rilldns_differential_last_success_seconds > 7200
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RillDNS differential test stale on {{ $labels.instance }}"
+          description: "No successful primary/secondary comparison has completed in two hours."

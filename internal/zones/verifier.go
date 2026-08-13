@@ -1,0 +1,84 @@
+package zones
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/miekg/dns"
+)
+
+type DNSVerifier struct {
+	Address       string
+	NotifyAddress string
+	Interval      time.Duration
+}
+
+func (v DNSVerifier) Notify(ctx context.Context, zone string) error {
+	if v.NotifyAddress == "" {
+		return nil
+	}
+	message := new(dns.Msg)
+	message.SetNotify(dns.Fqdn(zone))
+	client := &dns.Client{Net: "udp", Timeout: 3 * time.Second}
+	response, _, err := client.ExchangeContext(ctx, message, v.NotifyAddress)
+	if err != nil {
+		return err
+	}
+	if response.Rcode != dns.RcodeSuccess {
+		return fmt.Errorf("NOTIFY returned %s", dns.RcodeToString[response.Rcode])
+	}
+	return nil
+}
+
+func (v DNSVerifier) WaitForSerial(ctx context.Context, zone string, serial uint32) error {
+	return v.wait(ctx, zone, func(response *dns.Msg) bool {
+		for _, rr := range response.Answer {
+			if soa, ok := rr.(*dns.SOA); ok && soa.Serial == serial {
+				return true
+			}
+		}
+		return false
+	}, fmt.Sprintf("serial %d", serial))
+}
+
+func (v DNSVerifier) WaitForAbsence(ctx context.Context, zone string) error {
+	return v.wait(ctx, zone, func(response *dns.Msg) bool {
+		return response.Authoritative && response.Rcode == dns.RcodeNameError
+	}, "authoritative NXDOMAIN")
+}
+
+func (v DNSVerifier) wait(ctx context.Context, zone string, accepted func(*dns.Msg) bool, wanted string) error {
+	interval := v.Interval
+	if interval <= 0 {
+		interval = 200 * time.Millisecond
+	}
+	client := &dns.Client{Net: "udp", Timeout: time.Second}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	var last string
+	for {
+		message := new(dns.Msg)
+		message.SetQuestion(dns.Fqdn(zone), dns.TypeSOA)
+		response, _, err := client.ExchangeContext(ctx, message, v.Address)
+		if err == nil {
+			if accepted(response) {
+				return nil
+			}
+			last = fmt.Sprintf("rcode %s, authoritative %t", dns.RcodeToString[response.Rcode], response.Authoritative)
+			for _, rr := range response.Answer {
+				if soa, ok := rr.(*dns.SOA); ok {
+					last = fmt.Sprintf("served serial %d", soa.Serial)
+				}
+			}
+		} else {
+			last = err.Error()
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("verification timeout waiting for %s (%s): %w", wanted, last, ctx.Err())
+		case <-ticker.C:
+		}
+	}
+}

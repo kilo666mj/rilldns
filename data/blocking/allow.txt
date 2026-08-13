@@ -1,0 +1,2 @@
+# Explicit allowlist entries remove matching names from the generated hosts file.
+# allowed.example.test
