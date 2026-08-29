@@ -23,6 +23,7 @@ func main() {
 	auditPath := flag.String("audit-log", "/var/lib/rilldns/audit.jsonl", "append-only audit log")
 	dnsAddress := flag.String("dns-address", "127.0.0.1:1053", "CoreDNS address used to verify publication")
 	notifyAddress := flag.String("notify-address", "", "optional secondary NOTIFY address")
+	replicaDNSAddress := flag.String("replica-dns-address", "", "optional cache-free secondary DNS address used to confirm replication")
 	notifyTSIGName := flag.String("notify-tsig-name", os.Getenv("RILLDNS_NOTIFY_TSIG_NAME"), "TSIG key name used to authenticate NOTIFY")
 	notifyTSIGSecretFile := flag.String("notify-tsig-secret-file", os.Getenv("RILLDNS_NOTIFY_TSIG_SECRET_FILE"), "file containing the base64 TSIG secret used for NOTIFY")
 	readOnly := flag.Bool("read-only", false, "reject all zone mutations")
@@ -48,7 +49,7 @@ func main() {
 		}
 		notifySecret = strings.TrimSpace(string(secret))
 	}
-	verifier := zones.DNSVerifier{Address: *dnsAddress, NotifyAddress: *notifyAddress, Interval: 200 * time.Millisecond, TSIGName: *notifyTSIGName, TSIGSecret: notifySecret}
+	verifier := zones.DNSVerifier{Address: *dnsAddress, NotifyAddress: *notifyAddress, ReplicaAddress: *replicaDNSAddress, Interval: 200 * time.Millisecond, TSIGName: *notifyTSIGName, TSIGSecret: notifySecret}
 	store := zones.NewStore(*zoneDir, *auditPath, verifier)
 	apiServer := api.NewWithStatus(store, logger, *readOnly, *statusDir)
 	apiServer.SetMetricsSources(*prometheusURL, *coreDNSMetricsURL, *telemetryMetricsURL)

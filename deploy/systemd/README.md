@@ -122,7 +122,11 @@ allows port `1054` only from `192.0.2.10`. The obsolete polling-based
 The management API verifies auto-plugin publication through a cache-free
 authority on port `1056`. On `dns-primary`, firewalld permits that port only from
 `dns-secondary`, whose secondary daemon uses it for freshness and deletion probes
-while continuing TSIG-authenticated transfers on cache-free port `1056`.
+while continuing TSIG-authenticated transfers on cache-free port `1056`. After
+NOTIFY, the primary API also polls the secondary on port `1056` for the published
+SOA serial, returning a warning if replication is not confirmed within 15 seconds.
+The port `53` cache excludes all managed authoritative zones, so old RRsets and
+NXDOMAIN responses cannot conceal a newly loaded snapshot.
 
 `rilldns-refresh-blocklists.timer` runs the native
 `rill-blocklist-refresh` command to download the StevenBlack hosts list and the

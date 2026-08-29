@@ -7,7 +7,7 @@ import /etc/rilldns/transfer.conf
     errors
     auto {
         directory /var/lib/rilldns/zones ^(.*)\.zone$ {1}
-        reload 10s
+        reload 2s
     }
     import transfer-policy
     acl {
@@ -27,7 +27,7 @@ import /etc/rilldns/transfer.conf
 
     auto {
         directory /var/lib/rilldns/zones ^(.*)\.zone$ {1}
-        reload 10s
+        reload 2s
     }
     import transfer-policy
 
@@ -46,7 +46,9 @@ import /etc/rilldns/transfer.conf
     cache {
         success 10000
         denial 5000
-        serve_stale 1h
+        disable success internal lab.example 2.0.192.in-addr.arpa
+        disable denial internal lab.example 2.0.192.in-addr.arpa
+        serve_stale 1h verify 100ms
     }
 
     # These resolvers are reached directly through wg0 on dns-primary/2.
