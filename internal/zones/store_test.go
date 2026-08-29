@@ -22,13 +22,24 @@ api IN CNAME www.example.test.
 `
 
 type serialVerifier struct {
-	got       uint32
-	err       error
-	notified  string
-	absentErr error
+	got           uint32
+	err           error
+	notified      string
+	absentErr     error
+	replicaSerial uint32
+	replicaErr    error
+	replicaAbsent bool
 }
 
 func (v *serialVerifier) WaitForAbsence(_ context.Context, _ string) error { return v.absentErr }
+func (v *serialVerifier) WaitForReplicaSerial(_ context.Context, _ string, serial uint32) error {
+	v.replicaSerial = serial
+	return v.replicaErr
+}
+func (v *serialVerifier) WaitForReplicaAbsence(_ context.Context, _ string) error {
+	v.replicaAbsent = true
+	return v.replicaErr
+}
 func (v *serialVerifier) Notify(_ context.Context, zone string) error {
 	v.notified = zone
 	return nil
@@ -120,7 +131,7 @@ func TestApplyPublishesHistoryAndAudit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !result.Published || verifier.got != result.Serial || result.Serial != 2026081102 {
+	if !result.Published || verifier.got != result.Serial || verifier.replicaSerial != result.Serial || result.Serial != 2026081102 {
 		t.Fatalf("unexpected result: %+v verifier serial %d", result, verifier.got)
 	}
 	after, err := store.Get("example.test")
@@ -149,6 +160,22 @@ func TestApplyPublishesHistoryAndAudit(t *testing.T) {
 	}
 	if !strings.Contains(string(audit), `"request_id":"req-1"`) {
 		t.Fatalf("audit event missing: %s", audit)
+	}
+}
+
+func TestApplyWarnsWhenReplicaIsNotConfirmed(t *testing.T) {
+	verifier := &serialVerifier{replicaErr: errors.New("still serving old serial")}
+	store, _ := newTestStore(t, verifier)
+	before, _ := store.Get("example.test")
+	result, err := store.Apply(context.Background(), before.Name, ChangeRequest{
+		ExpectedRevision: before.Revision,
+		Changes:          []Change{{Action: "upsert", Name: "new", Type: "A", TTL: 60, Records: []string{"192.0.2.20"}}},
+	}, "test", "replica-warning")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Published || !strings.Contains(result.Warning, "secondary publication was not confirmed") {
+		t.Fatalf("unexpected result: %+v", result)
 	}
 }
 

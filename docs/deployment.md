@@ -23,11 +23,20 @@ the metrics listener to the monitoring network.
 The primary publishes validated zone files atomically and sends DNS NOTIFY to
 the secondary. The persistent `rill-secondary` daemon compares SOA serials and
 requests a TSIG-authenticated AXFR from a cache-free authority when a serial
-changes. An hourly SOA poll covers lost NOTIFY messages.
+changes. After NOTIFY, the primary API waits for the cache-free secondary
+authority to serve the new SOA serial before returning; an unconfirmed replica
+is reported as a publication warning. An hourly SOA poll covers lost NOTIFY
+messages.
 
 ```text
 dns-primary:1056 -- TSIG AXFR/NOTIFY --> dns-secondary:1054
+dns-primary API  -- SOA confirmation --> dns-secondary:1056
 ```
+
+The client-facing listener does not cache positive or negative answers for
+managed authoritative zones. This prevents a locally cached old RRset or
+NXDOMAIN from hiding an already-published zone snapshot; recursive answers
+outside those zones remain cached normally.
 
 Generate the shared TSIG secret during deployment. Install it as root-owned
 data on the two nodes; never store it in Git. Restrict the NOTIFY, transfer,
