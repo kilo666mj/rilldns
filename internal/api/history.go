@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -89,7 +90,7 @@ func (s *Server) prometheusRange(parent *http.Request, query string, start, end 
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Prometheus returned %s", response.Status)
+		return nil, fmt.Errorf("unexpected Prometheus response %s", response.Status)
 	}
 	var payload struct {
 		Status string `json:"status"`
@@ -103,7 +104,7 @@ func (s *Server) prometheusRange(parent *http.Request, query string, start, end 
 		return nil, err
 	}
 	if payload.Status != "success" {
-		return nil, fmt.Errorf("Prometheus query failed")
+		return nil, errors.New("unsuccessful Prometheus query")
 	}
 	points := []historyPoint{}
 	for _, series := range payload.Data.Result {
