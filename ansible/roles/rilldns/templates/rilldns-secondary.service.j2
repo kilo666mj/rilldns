@@ -1,0 +1,25 @@
+[Unit]
+Description=RillDNS persistent secondary replication
+After=network-online.target rilldns.service
+Wants=network-online.target
+Requires=rilldns.service
+
+[Service]
+Type=simple
+User={{ rilldns_user }}
+Group={{ rilldns_group }}
+UMask=0077
+ExecStart=/usr/local/bin/rill-secondary -primary {{ rilldns_primary_address }}:1056 -probe-primary {{ rilldns_primary_address }}:1056 -listen {{ rilldns_secondary_address }}:1054 -notify-from {{ rilldns_primary_address }} -tsig-name {{ rilldns_tsig_name }} -tsig-secret-file /etc/rilldns/transfer.secret -output /var/lib/rilldns/zones -status /var/lib/rilldns/status/zones.json
+Restart=on-failure
+RestartSec=2s
+NoNewPrivileges=yes
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/rilldns
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

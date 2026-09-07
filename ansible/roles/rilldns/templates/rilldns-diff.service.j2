@@ -1,0 +1,17 @@
+[Unit]
+Description=Compare RillDNS primary and secondary authoritative zones
+After=network-online.target rilldns.service
+
+[Service]
+Type=oneshot
+User={{ rilldns_user }}
+Group={{ rilldns_group }}
+UMask=0077
+Nice=10
+ExecStart=/usr/local/bin/rill-diff -source {{ '127.0.0.1' if rilldns_role == 'primary' else rilldns_primary_address }}:1056 -target {{ rilldns_secondary_address if rilldns_role == 'primary' else '127.0.0.1' }}:{{ '1056' if rilldns_role == 'primary' else '53' }}{% if rilldns_role == 'secondary' %} -target-zone-dir /var/lib/rilldns/zones{% endif %} -source-tsig-name {{ rilldns_tsig_name }} -source-tsig-secret-file /etc/rilldns/transfer.secret{% if rilldns_role == 'primary' %} -target-tsig-name {{ rilldns_tsig_name }} -target-tsig-secret-file /etc/rilldns/transfer.secret{% endif %} -report-file /var/lib/rilldns/differential-report.json -status-file /var/lib/rilldns/status/differential.json {{ rilldns_authoritative_zones | join(' ') }}
+NoNewPrivileges=yes
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/rilldns

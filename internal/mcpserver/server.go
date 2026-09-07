@@ -2,18 +2,44 @@ package mcpserver
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
+	"github.com/kilo666mj/mcpkit"
 	"github.com/kilo666mj/rilldns/internal/blocking"
+	"github.com/kilo666mj/rilldns/internal/cloudflare"
 	"github.com/kilo666mj/rilldns/internal/controlclient"
 	"github.com/kilo666mj/rilldns/internal/refreshstatus"
 	"github.com/kilo666mj/rilldns/internal/zones"
 	"github.com/miekg/dns"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+// Hosted exposes the same API-backed tool catalogue over authenticated,
+// stateless Streamable HTTP. The API remains authoritative for validation,
+// revisions, auditing, verification, and rollback.
+func Hosted(api *controlclient.Client, dnsAddress, token string) (http.Handler, error) {
+	handler, err := mcpkit.StatelessHTTP(func(*http.Request) *mcp.Server {
+		return New(api, dnsAddress)
+	}, mcpkit.HTTPOptions{DisableLocalhostProtection: true})
+	if err != nil {
+		return nil, err
+	}
+	expected := []byte("Bearer " + token)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		provided := []byte(r.Header.Get("Authorization"))
+		if len(expected) == len("Bearer ") || len(provided) != len(expected) || subtle.ConstantTimeCompare(provided, expected) != 1 {
+			w.Header().Set("WWW-Authenticate", "Bearer")
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		handler.ServeHTTP(w, r)
+	}), nil
+}
 
 type Server struct {
 	api        *controlclient.Client
@@ -40,6 +66,30 @@ type BlocklistUpdateOutput struct {
 
 type ListZonesOutput struct {
 	Zones []zones.Zone `json:"zones"`
+}
+
+type ListCloudflareZonesOutput struct {
+	Zones []controlclient.CloudflareZone `json:"zones"`
+}
+type CloudflareRecordsOutput struct {
+	Zone cloudflare.ZoneRecords `json:"zone"`
+}
+type CloudflarePlanInput struct {
+	Zone             string              `json:"zone" jsonschema:"Configured Cloudflare DNS zone to change"`
+	ExpectedRevision string              `json:"expected_revision" jsonschema:"Exact revision returned by dns_cloudflare_list_records"`
+	Changes          []cloudflare.Change `json:"changes" jsonschema:"Complete Cloudflare RRset upsert/delete operations"`
+}
+type CloudflarePlanOutput struct {
+	Plan cloudflare.Plan `json:"plan"`
+}
+type CloudflareApplyInput struct {
+	Zone             string              `json:"zone" jsonschema:"Configured Cloudflare DNS zone to change"`
+	ExpectedRevision string              `json:"expected_revision" jsonschema:"Exact revision returned by dns_cloudflare_list_records or dns_cloudflare_plan_changes"`
+	Changes          []cloudflare.Change `json:"changes" jsonschema:"Complete Cloudflare RRset upsert/delete operations"`
+	Confirm          bool                `json:"confirm" jsonschema:"Must be true to write to Cloudflare"`
+}
+type CloudflareApplyOutput struct {
+	Result cloudflare.ApplyResult `json:"result"`
 }
 
 type RefreshStatusOutput struct {
@@ -137,6 +187,26 @@ func New(api *controlclient.Client, dnsAddress string) *mcp.Server {
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: &closedWorld},
 	}, service.listZones)
 	mcp.AddTool(server, &mcp.Tool{
+		Name: "dns_cloudflare_list_zones", Title: "List configured Cloudflare DNS zones",
+		Description: "List the external Cloudflare zones explicitly allowed in this RillDNS instance.",
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: &closedWorld},
+	}, service.listCloudflareZones)
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "dns_cloudflare_list_records", Title: "List Cloudflare DNS records",
+		Description: "Read and normalize all records in one configured Cloudflare zone, including a synthetic optimistic-concurrency revision.",
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: &closedWorld},
+	}, service.listCloudflareRecords)
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "dns_cloudflare_plan_changes", Title: "Preview Cloudflare DNS changes",
+		Description: "Validate Cloudflare RRset changes against the current revision and show the exact proposed deletes and creates without writing to Cloudflare.",
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: &closedWorld},
+	}, service.planCloudflareChanges)
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "dns_cloudflare_apply_changes", Title: "Apply Cloudflare DNS changes",
+		Description: "Apply a reviewed Cloudflare RRset batch with the exact current revision and confirm=true; verifies, audits, and rolls back on failure.",
+		Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive, IdempotentHint: false, OpenWorldHint: &closedWorld},
+	}, service.applyCloudflareChanges)
+	mcp.AddTool(server, &mcp.Tool{
 		Name:        "dns_refresh_status",
 		Title:       "Show DNS refresh health",
 		Description: "Show zone-transfer, DNSSEC-signature, and blocklist refresh health, timestamps, counts, and errors.",
@@ -209,6 +279,50 @@ func (s *Server) refreshStatus(ctx context.Context, _ *mcp.CallToolRequest, _ Em
 func (s *Server) listZones(ctx context.Context, _ *mcp.CallToolRequest, _ EmptyInput) (*mcp.CallToolResult, ListZonesOutput, error) {
 	result, err := s.api.ListZones(ctx)
 	return nil, ListZonesOutput{Zones: result}, err
+}
+
+func (s *Server) listCloudflareZones(ctx context.Context, _ *mcp.CallToolRequest, _ EmptyInput) (*mcp.CallToolResult, ListCloudflareZonesOutput, error) {
+	result, err := s.api.ListCloudflareZones(ctx)
+	return nil, ListCloudflareZonesOutput{Zones: result}, err
+}
+
+func (s *Server) listCloudflareRecords(ctx context.Context, _ *mcp.CallToolRequest, input ZoneInput) (*mcp.CallToolResult, CloudflareRecordsOutput, error) {
+	if strings.TrimSpace(input.Zone) == "" {
+		return nil, CloudflareRecordsOutput{}, errors.New("zone is required")
+	}
+	result, err := s.api.GetCloudflareRecords(ctx, input.Zone)
+	return nil, CloudflareRecordsOutput{Zone: result}, err
+}
+
+func (s *Server) planCloudflareChanges(ctx context.Context, _ *mcp.CallToolRequest, input CloudflarePlanInput) (*mcp.CallToolResult, CloudflarePlanOutput, error) {
+	if strings.TrimSpace(input.Zone) == "" {
+		return nil, CloudflarePlanOutput{}, errors.New("zone is required")
+	}
+	if strings.TrimSpace(input.ExpectedRevision) == "" {
+		return nil, CloudflarePlanOutput{}, errors.New("expected_revision is required")
+	}
+	if len(input.Changes) == 0 {
+		return nil, CloudflarePlanOutput{}, errors.New("at least one change is required")
+	}
+	if len(input.Changes) > 100 {
+		return nil, CloudflarePlanOutput{}, errors.New("a single MCP call is limited to 100 RRset changes")
+	}
+	result, err := s.api.PlanCloudflareChanges(ctx, input.Zone, cloudflare.PlanRequest{ExpectedRevision: input.ExpectedRevision, Changes: input.Changes})
+	return nil, CloudflarePlanOutput{Plan: result}, err
+}
+
+func (s *Server) applyCloudflareChanges(ctx context.Context, _ *mcp.CallToolRequest, input CloudflareApplyInput) (*mcp.CallToolResult, CloudflareApplyOutput, error) {
+	if !input.Confirm {
+		return nil, CloudflareApplyOutput{}, errors.New("confirm must be true to commit Cloudflare DNS changes; use dns_cloudflare_plan_changes first")
+	}
+	if strings.TrimSpace(input.Zone) == "" || strings.TrimSpace(input.ExpectedRevision) == "" {
+		return nil, CloudflareApplyOutput{}, errors.New("zone and expected_revision are required")
+	}
+	if len(input.Changes) == 0 || len(input.Changes) > 100 {
+		return nil, CloudflareApplyOutput{}, errors.New("between 1 and 100 RRset changes are required")
+	}
+	result, err := s.api.ApplyCloudflareChanges(ctx, input.Zone, cloudflare.ApplyRequest{ExpectedRevision: input.ExpectedRevision, Changes: input.Changes, Confirm: true}, "mcp:cloudflare-apply")
+	return nil, CloudflareApplyOutput{Result: result}, err
 }
 
 func (s *Server) listRecords(ctx context.Context, _ *mcp.CallToolRequest, input ZoneInput) (*mcp.CallToolResult, ZoneOutput, error) {

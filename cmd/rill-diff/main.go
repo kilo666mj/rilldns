@@ -101,6 +101,9 @@ func main() {
 	}
 	if *reportFile != "" {
 		err = statusfile.WriteJSON(*reportFile, report, 0440)
+		if err == nil && !report.Equal {
+			err = statusfile.WriteJSON(*reportFile+".failed", report, 0440)
+		}
 	} else {
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
@@ -115,20 +118,47 @@ func main() {
 		for _, zone := range report.Zones {
 			queries += zone.Queries
 		}
-		status := refreshstatus.Status{Kind: "differential", Success: report.Equal, LastAttempt: report.CheckedAt, CheckedZones: len(report.Zones), Queries: queries, Mismatches: report.Mismatches}
+		status := differentialStatus(report, queries, loadPreviousStatus(*statusFile))
 		if report.Equal {
 			status.LastSuccess = time.Now().UTC()
-		} else {
-			status.Error = "RillDNS primary and secondary differ"
 		}
 		if err := statusfile.WriteJSON(*statusFile, status, 0440); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
 	}
-	if !report.Equal {
+	if !report.Equal && *statusFile == "" {
 		os.Exit(1)
 	}
+}
+
+func loadPreviousStatus(path string) refreshstatus.Status {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return refreshstatus.Status{}
+	}
+	var status refreshstatus.Status
+	if json.Unmarshal(content, &status) != nil {
+		return refreshstatus.Status{}
+	}
+	return status
+}
+
+func differentialStatus(report Report, queries int, previous refreshstatus.Status) refreshstatus.Status {
+	status := refreshstatus.Status{
+		Kind:         "differential",
+		Success:      report.Equal,
+		LastAttempt:  report.CheckedAt,
+		LastSuccess:  previous.LastSuccess,
+		CheckedZones: len(report.Zones),
+		Queries:      queries,
+		Mismatches:   report.Mismatches,
+	}
+	if !report.Equal {
+		status.Error = "RillDNS primary and secondary differ"
+		status.ConsecutiveFailures = previous.ConsecutiveFailures + 1
+	}
+	return status
 }
 
 func compare(zone, source, target, targetZoneDir string, sourceCredential, targetCredential *tsigCredential, timeout time.Duration) ZoneResult {

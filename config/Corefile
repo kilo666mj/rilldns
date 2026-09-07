@@ -4,7 +4,7 @@
 (managed-zones) {
     auto {
         directory /data/zones ^(.*)\.zone$ {1}
-        reload 2s
+        reload 10s
     }
 }
 
@@ -37,9 +37,7 @@
     cache {
         success 10000
         denial 5000
-        disable success example.test
-        disable denial example.test
-        serve_stale 1h verify 100ms
+        serve_stale 1h
     }
 
     # Replace these example public resolvers with the upstreams appropriate for

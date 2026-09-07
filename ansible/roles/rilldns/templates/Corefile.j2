@@ -1,0 +1,53 @@
+# Managed by Ansible. Deployment-specific zones are loaded from node-local files.
+import /etc/rilldns/transfer.conf
+
+.:1056 {
+    errors
+    auto {
+        directory /var/lib/rilldns/zones ^(.*)\.zone$ {1}
+        reload 10s
+    }
+    import transfer-policy
+    acl {
+        allow net 127.0.0.0/8 ::1/128 {{ rilldns_primary_address }}/32 {{ rilldns_secondary_address }}/32
+        block net *
+    }
+}
+
+.:53 {
+    errors
+    health 127.0.0.1:18080
+    ready 127.0.0.1:18181
+    prometheus 127.0.0.1:19153
+    dnstap tcp://127.0.0.1:6000 full
+    auto {
+        directory /var/lib/rilldns/zones ^(.*)\.zone$ {1}
+        reload 10s
+    }
+    import transfer-policy
+    acl {
+        allow net 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 127.0.0.0/8 ::1/128
+        block net *
+    }
+    hosts /var/lib/rilldns/blocking/merged.hosts {
+        ttl 60
+        no_reverse
+        reload 5s
+        fallthrough
+    }
+    cache {
+        success 10000
+        denial 5000
+        import /var/lib/rilldns/cache-zones.conf
+        serve_stale 1h
+    }
+    forward . {{ rilldns_upstreams | join(' ') }} {
+        policy round_robin
+        health_check 5s
+        max_fails 2
+        failover SERVFAIL REFUSED
+        failfast_all_unhealthy_upstreams
+    }
+    loop
+    reload 10s 0s
+}

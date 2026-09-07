@@ -1,0 +1,7 @@
+---
+- name: Deploy RillDNS
+  hosts: rilldns
+  become: true
+  serial: 1
+  roles:
+    - rilldns

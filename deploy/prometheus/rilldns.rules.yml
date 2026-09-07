@@ -1,9 +1,33 @@
 groups:
   - name: rilldns
     rules:
+      - alert: RillDNSHAPeerUnreachable
+        expr: rilldns_ha_peer_reachable == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RillDNS HA peer is unreachable from {{ $labels.instance }}"
+
+      - alert: RillDNSHAWriterCountInvalid
+        expr: sum(rilldns_ha_writable) != 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RillDNS must have exactly one writable control-plane node"
+
+      - alert: RillDNSHAVIPCountInvalid
+        expr: sum(rilldns_ha_vip_owned) != 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RillDNS DNS VIP must be owned by exactly one node"
+
       - alert: RillDNSRefreshUnhealthy
-        expr: rilldns_refresh_healthy == 0
-        for: 5m
+        expr: rilldns_refresh_healthy == 0 and on(instance, job) rilldns_differential_consecutive_failures == 0
+        for: 15m
         labels:
           severity: critical
         annotations:
@@ -42,18 +66,18 @@ groups:
           summary: "RillDNS blocklist unexpectedly small on {{ $labels.instance }}"
           description: "The published RillDNS blocklist contains fewer than 100,000 domains."
       - alert: RillDNSDifferentialMismatch
-        expr: rilldns_differential_mismatches > 0
+        expr: rilldns_differential_mismatches > 0 and on(instance, job) rilldns_differential_consecutive_failures >= 2
         for: 5m
         labels:
           severity: critical
         annotations:
           summary: "RillDNS primary and secondary differ on {{ $labels.instance }}"
-          description: "Authoritative AXFR records or SOA serials do not match."
+          description: "Two consecutive authoritative comparisons have found AXFR, SOA, or query mismatches."
       - alert: RillDNSDifferentialStale
-        expr: time() - rilldns_differential_last_success_seconds > 7200
+        expr: time() - rilldns_differential_last_attempt_seconds > 7200
         for: 5m
         labels:
           severity: critical
         annotations:
           summary: "RillDNS differential test stale on {{ $labels.instance }}"
-          description: "No successful primary/secondary comparison has completed in two hours."
+          description: "No primary/secondary comparison attempt has completed in two hours."

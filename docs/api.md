@@ -6,6 +6,49 @@ The first control-plane API manages existing primary zones. It is intentionally 
 phased primary-to-secondary replication is active, preventing independent API
 writes from creating divergent zones.
 
+## Cloudflare records (read-only)
+
+Configure an explicit zone-name allowlist and a root-owned API token file in
+`/etc/rilldns/rill-api.env`:
+
+```sh
+RILLDNS_CLOUDFLARE_ZONES=example.com,example.net
+RILLDNS_CLOUDFLARE_TOKEN_FILE=/etc/rilldns/cloudflare.token
+```
+
+The token currently needs Cloudflare Zone Read and DNS Read for only those
+zones. RillDNS resolves and caches zone IDs; callers provide zone names only.
+The authenticated web console can validate and update the allowlist. Committed
+changes are revisioned and stored in `/var/lib/rilldns/cloudflare-zones.json`;
+the token remains in its separate credential file.
+
+```sh
+curl -sS http://127.0.0.1:8053/v1/providers/cloudflare/zones
+curl -i http://127.0.0.1:8053/v1/providers/cloudflare/zones/example.com/records
+```
+
+The record response includes a synthetic revision in its `ETag` header and
+JSON body. Use it to preview a complete-RRset change without writing:
+
+```sh
+curl -sS -X POST \
+  -H 'If-Match: "revision-from-record-response"' \
+  -H 'Content-Type: application/json' \
+  http://127.0.0.1:8053/v1/providers/cloudflare/zones/example.com/plans \
+  -d '{"changes":[{"action":"upsert","name":"www","type":"A","ttl":300,"records":["192.0.2.10"]}]}'
+```
+
+The plan lists exact record-ID deletes and proposed creates. It supports A,
+AAAA, CAA, CNAME, MX, NS, SRV, and TXT records, preserves uniform existing
+Cloudflare proxy/comment/tag attributes unless overridden, and rejects stale
+revisions, invalid TTLs, duplicate values, and CNAME conflicts. Apply the same
+change body at `/changes` with `confirm:true`. The server reads and compares the
+revision again, submits a minimal Cloudflare batch, verifies the API and
+assigned authoritative nameservers, audits the outcome, and attempts a
+compensating rollback if API-state verification fails. DNS propagation lag is
+reported as `dns_verified:false` with a warning rather than rolling back an
+otherwise API-verified change.
+
 ## Refresh health
 
 The loopback API exposes the last zone-transfer and blocklist refresh results:
@@ -14,6 +57,13 @@ The loopback API exposes the last zone-transfer and blocklist refresh results:
 curl -sS http://127.0.0.1:8053/v1/status/refresh
 curl -sS http://127.0.0.1:8053/metrics
 ```
+
+HA role, write mode, VIP ownership, peer reachability and latency, replication
+freshness, and zone snapshot state are available from `GET /v1/status/ha`.
+When configured, the response also summarizes the peer's role, write mode, VIP
+ownership, replication state, zone count, and last snapshot. This endpoint is
+also exposed on the read-only metrics listener for peer checks. See
+[high availability](ha.md).
 
 Refresh health becomes false after a failed job, when hourly zone data is more
 than two hours old, when daily blocklist data is more than 26 hours old, or when

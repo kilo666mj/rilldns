@@ -12,11 +12,14 @@ Create an OIDC client in Pocket ID with this exact callback URL:
 https://dns.example.net/api/auth/callback
 ```
 
-Copy [`deploy/systemd/ui.env.example`](../deploy/systemd/ui.env.example) to
-`/etc/rilldns/ui.env`, insert the client ID and secret, and set at least one
+Copy [`deploy/systemd/rill-api.env.example`](../deploy/systemd/rill-api.env.example) to
+`/etc/rilldns/rill-api.env`, insert the client ID and secret, and set at least one
 subject or group allowlist. RillDNS refuses to start with an empty allowlist,
 and email allowlists are rejected because an unverified email claim is not a
 safe authorization identity. The file must be owned by root with mode `0600`.
+The same file contains non-secret Cloudflare zone configuration and the path to
+its separate credential file; the Cloudflare token itself must not be placed in
+the environment file.
 
 Generate the shared encrypted-session key once and install the same value on
 both DNS nodes:
@@ -32,11 +35,12 @@ attributed to the authenticated email or Pocket ID subject in the audit log.
 ## Reverse proxy
 
 [`deploy/nginx/dns.example.net.conf`](../deploy/nginx/dns.example.net.conf)
-terminates HTTPS and proxies directly to the writable primary at
-`192.0.2.10:8083`. Management deliberately does not follow the DNS VIP:
-loss of the primary can make the UI unavailable without affecting DNS service
-on the production secondary. Firewalld permits that UI port only from the
-reverse proxy.
+terminates HTTPS and uses the writable primary at `192.0.2.10:8083` as its
+normal upstream, with the read-only secondary as a backup. Management does not
+follow the DNS VIP because DNS service ownership and control-plane writer
+election are separate. During a primary outage the UI remains available from
+the secondary for inspection, but mutations remain unavailable until a safe
+writer promotion. Firewalld permits the UI port only from the reverse proxy.
 The separate `dns.example.net-acme.conf` can be enabled before the certificate
 exists; enable the HTTPS file only after certificate installation.
 
@@ -45,10 +49,14 @@ The UI provides:
 - Prometheus-backed query rate, cache-hit ratio, NXDOMAIN rate, and cache-size
   history over fixed 1-hour, 6-hour, 24-hour, and 7-day ranges;
 - aggregate refresh, DNSSEC, blocking, and differential health;
+- a side-by-side HA cluster view showing both nodes' role, health, write mode,
+  VIP ownership, replication state, zone snapshot, and peer latency;
 - zone roles, serials, revisions, and RRset browsing;
 - RRset dry-run previews and optimistic-concurrency publication;
 - zone import/create/delete with server-side verification;
 - revisioned blocklist source and allow/deny configuration.
+- Cloudflare zone allowlist configuration plus external record browsing,
+  planning, confirmed application, and verification status.
 - aggregate blocked-query rate and percentage graphs from dnstap; query names
   and client identities are discarded immediately and are never persisted.
 

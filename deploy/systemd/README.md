@@ -25,14 +25,18 @@ Files installed on each node:
 /usr/local/bin/rill-reconcile
 /usr/local/bin/rill-diff
 /usr/local/bin/rill-zone-status
+/usr/local/bin/rill-ha                    # operator promotion preflight
 /usr/local/bin/rill-blocklist-refresh
 /usr/local/bin/rill-telemetry
+/usr/local/bin/rill-cache-zones
 /usr/local/bin/rill-secondary          # dns-secondary
 /usr/local/bin/rill-notify             # dns-primary
 /etc/rilldns/Corefile
 /etc/rilldns/transfer.conf
 /etc/rilldns/transfer.keys             # generated, not in Git
 /etc/rilldns/transfer.secret           # generated, not in Git
+/etc/rilldns/rill-api.env              # API/UI configuration and secret paths
+/etc/rilldns/cloudflare.token          # optional credential, never in Git
 /var/lib/rilldns/zones/example.test.zone
 /var/lib/rilldns/zones/*.zone
 /var/lib/rilldns/zones/.roles.json
@@ -46,6 +50,8 @@ Files installed on each node:
 /etc/systemd/system/rilldns-secondary.service  # dns-secondary
 /etc/systemd/system/rilldns-diff.service
 /etc/systemd/system/rilldns-diff.service.d/secondary.conf  # dns-secondary
+/etc/systemd/system/rilldns-cache-zones.service
+/etc/systemd/system/rilldns-cache-zones.path
 ```
 
 The DNS binary is the unmodified, pinned CoreDNS 1.14.6 release for the node
@@ -53,6 +59,11 @@ architecture. The unit uses an unprivileged account, a read-only system view,
 and only `CAP_NET_BIND_SERVICE` to bind port 53.
 
 The DNS and API processes share a static, unprivileged `rilldns` account. CoreDNS reads the managed data while the loopback-only API can atomically publish zone changes under `/var/lib/rilldns`.
+
+The API service optionally reads `/etc/rilldns/rill-api.env`, deployed from the
+sanitized `rill-api.env.example`. It contains UI/OIDC settings, Cloudflare zone
+names, and secret-file paths. Store credentials such as the Cloudflare token in
+separate restricted files rather than directly in the environment file.
 
 API roles:
 
@@ -122,11 +133,7 @@ allows port `1054` only from `192.0.2.10`. The obsolete polling-based
 The management API verifies auto-plugin publication through a cache-free
 authority on port `1056`. On `dns-primary`, firewalld permits that port only from
 `dns-secondary`, whose secondary daemon uses it for freshness and deletion probes
-while continuing TSIG-authenticated transfers on cache-free port `1056`. After
-NOTIFY, the primary API also polls the secondary on port `1056` for the published
-SOA serial, returning a warning if replication is not confirmed within 15 seconds.
-The port `53` cache excludes all managed authoritative zones, so old RRsets and
-NXDOMAIN responses cannot conceal a newly loaded snapshot.
+while continuing TSIG-authenticated transfers on cache-free port `1056`.
 
 `rilldns-refresh-blocklists.timer` runs the native
 `rill-blocklist-refresh` command to download the StevenBlack hosts list and the
@@ -161,3 +168,26 @@ compares every current owner/type plus deterministic NXDOMAIN and apex-NODATA
 queries over UDP and TCP. Optional implementation-specific authority-section
 additions are ignored; response code, AA/truncation flags, answer/CNAME chains,
 TTLs, and DNSSEC answer records are compared.
+
+A failed comparison is also retained as
+`/var/lib/rilldns/differential-report.json.failed`. Differential status keeps
+the previous successful timestamp and counts consecutive failures, allowing
+alerting to ignore a single transient run while preserving its diagnostics.
+When a status file is configured, comparison mismatches are reported through
+health metrics rather than the process exit status, avoiding a redundant
+systemd-unit alert. Execution and report-writing errors still fail the unit.
+Prometheus tracks the last attempt separately from the last successful result,
+so a mismatch alert does not also masquerade as a stale-job alert.
+
+`rilldns-cache-zones.service` derives cache exclusions from the SOA origins in
+the local `*.zone` inventory and atomically writes
+`/var/lib/rilldns/cache-zones.conf`. No deployment-specific zone names are
+stored in the Corefile or repository. The service runs before CoreDNS starts,
+and `rilldns-cache-zones.path` regenerates the imported fragment after zone
+files are created or removed. CoreDNS's reload plugin watches imported files,
+so inventory changes take effect without a DNS service restart. Enable the
+watcher on both nodes:
+
+```sh
+systemctl enable --now rilldns-cache-zones.path
+```

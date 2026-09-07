@@ -1,9 +1,33 @@
 package main
 
 import (
+	"github.com/kilo666mj/rilldns/internal/refreshstatus"
 	"github.com/miekg/dns"
 	"testing"
+	"time"
 )
+
+func TestDifferentialStatusPreservesLastSuccessAndCountsFailures(t *testing.T) {
+	lastSuccess := time.Date(2026, 8, 14, 14, 25, 0, 0, time.UTC)
+	checkedAt := lastSuccess.Add(time.Hour)
+	status := differentialStatus(Report{CheckedAt: checkedAt, Equal: false, Mismatches: 3}, 12, refreshstatus.Status{
+		LastSuccess:         lastSuccess,
+		ConsecutiveFailures: 1,
+	})
+	if !status.LastSuccess.Equal(lastSuccess) {
+		t.Fatalf("last success = %v, want %v", status.LastSuccess, lastSuccess)
+	}
+	if status.ConsecutiveFailures != 2 {
+		t.Fatalf("consecutive failures = %d, want 2", status.ConsecutiveFailures)
+	}
+}
+
+func TestDifferentialStatusClearsFailureCountOnSuccess(t *testing.T) {
+	status := differentialStatus(Report{CheckedAt: time.Now(), Equal: true}, 12, refreshstatus.Status{ConsecutiveFailures: 2})
+	if status.ConsecutiveFailures != 0 || !status.Success {
+		t.Fatalf("successful status retained failures: %+v", status)
+	}
+}
 
 func TestMultiset(t *testing.T) {
 	a, _ := dns.NewRR("example. 300 IN A 192.0.2.1")

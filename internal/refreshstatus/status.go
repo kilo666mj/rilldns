@@ -27,6 +27,7 @@ type Status struct {
 	Sources             int       `json:"sources,omitempty"`
 	SHA256              string    `json:"sha256,omitempty"`
 	Mismatches          int       `json:"mismatches,omitempty"`
+	ConsecutiveFailures int       `json:"consecutive_failures,omitempty"`
 	CheckedZones        int       `json:"checked_zones,omitempty"`
 	Queries             int       `json:"queries,omitempty"`
 }

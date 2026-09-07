@@ -1,0 +1,107 @@
+---
+- name: Deploy the hosted RillDNS MCP endpoint
+  hosts: rilldns
+  become: true
+  serial: 1
+  vars:
+    rilldns_source: "{{ playbook_dir }}/.."
+    rilldns_build_dir: "{{ playbook_dir }}/local/build"
+    rilldns_mcp_token: "{{ lookup('ansible.builtin.password', playbook_dir + '/local/rilldns_mcp_token', length=64, chars=['hexdigits']) | lower }}"
+
+  pre_tasks:
+    - name: Create controller build directory
+      ansible.builtin.file:
+        path: "{{ rilldns_build_dir }}"
+        state: directory
+        mode: "0700"
+      delegate_to: localhost
+      become: false
+      run_once: true
+
+    - name: Build rill-api for supported node architectures
+      ansible.builtin.command:
+        argv:
+          - go
+          - build
+          - -trimpath
+          - -o
+          - "{{ rilldns_build_dir }}/rill-api-{{ item }}"
+          - ./cmd/rill-api
+        chdir: "{{ rilldns_source }}"
+      environment:
+        GOCACHE: /tmp/rilldns-ansible-go-cache
+        CGO_ENABLED: "0"
+        GOOS: linux
+        GOARCH: "{{ item }}"
+      delegate_to: localhost
+      become: false
+      run_once: true
+      changed_when: true
+      loop:
+        - amd64
+        - arm64
+
+  tasks:
+    - name: Install rill-api with hosted MCP support
+      ansible.builtin.copy:
+        src: "{{ rilldns_build_dir }}/rill-api-{{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[ansible_facts['architecture']] }}"
+        dest: /usr/local/bin/rill-api
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install dedicated hosted MCP credential
+      ansible.builtin.lineinfile:
+        path: /etc/rilldns/rill-api.env
+        regexp: '^RILLDNS_MCP_TOKEN='
+        line: "RILLDNS_MCP_TOKEN={{ rilldns_mcp_token }}"
+        create: true
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+
+    - name: Ensure the API service reads the hosted MCP environment
+      ansible.builtin.copy:
+        content: |
+          [Service]
+          EnvironmentFile=-/etc/rilldns/rill-api.env
+        dest: /etc/systemd/system/rilldns-api.service.d/mcp-env.conf
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Restart the API with the hosted MCP configuration
+      ansible.builtin.systemd_service:
+        name: rilldns-api
+        state: restarted
+        daemon_reload: true
+
+    - name: Verify authenticated hosted MCP initialization
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8053/mcp
+        method: POST
+        headers:
+          Authorization: "Bearer {{ rilldns_mcp_token }}"
+          Accept: application/json, text/event-stream
+          Content-Type: application/json
+        body_format: json
+        body:
+          jsonrpc: "2.0"
+          id: 1
+          method: initialize
+          params:
+            protocolVersion: "2025-06-18"
+            capabilities: {}
+            clientInfo:
+              name: ansible-smoke
+              version: "1"
+        status_code: 200
+        return_content: true
+      register: rilldns_mcp_smoke
+      retries: 10
+      delay: 2
+      until:
+        - rilldns_mcp_smoke.status == 200
+        - "'rilldns' in rilldns_mcp_smoke.content"
+      no_log: true

@@ -191,7 +191,8 @@ func writeAtomic(path string, values []string) error {
 		return err
 	}
 	temporaryPath := temporary.Name()
-	// Best effort: on success the rename has already consumed this name.
+	// Best effort: on the success path the rename has already consumed
+	// this name, so the remove is expected to fail with ENOENT.
 	defer func() { _ = os.Remove(temporaryPath) }()
 	if _, err = temporary.Write(content); err == nil {
 		err = temporary.Chmod(0o640)

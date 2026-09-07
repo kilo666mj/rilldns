@@ -8,6 +8,11 @@ authoritative zone management, forwarding and caching, authenticated
 primary/secondary replication, managed ad blocking, a Go API and MCP server,
 an OIDC-protected web console, differential checks, and Prometheus monitoring.
 
+For a first server deployment, use the sanitized, variable-driven
+[Ansible playbook](ansible/README.md). It keeps real inventories, zones, and
+secrets outside the public repository and validates required settings before
+changing either node.
+
 It is intended for experienced self-hosters and small infrastructure teams.
 RillDNS is not a hosted service or a turnkey replacement for understanding DNS,
 firewalling, backups, and key management.
@@ -59,17 +64,18 @@ The reference production model uses two native CoreDNS nodes:
                               │
                        reverse proxy
                               │
-                    writable primary API
-                              │
-              TSIG NOTIFY + verified AXFR
-                              │
-LAN clients ── DNS VIP ── read-only secondary ── upstream resolvers
-                              │
-                        Prometheus metrics
+                primary API ─── backup ─── secondary API
+                 writable                    read-only
+                      │    TSIG NOTIFY/AXFR      │
+                      └──────────┬───────────────┘
+LAN clients ──────────────── DNS VIP ───────────── upstream resolvers
+                                  │
+                           Prometheus metrics
 ```
 
 See [production deployment](docs/deployment.md), the
-[API reference](docs/api.md), [MCP setup](docs/mcp.md), and
+[API reference](docs/api.md), [high availability](docs/ha.md),
+[MCP setup](docs/mcp.md), and
 [web UI configuration](docs/ui.md). Files under `deploy/` are sanitized
 examples and must be adapted to your addresses, zones, firewall, and identity
 provider.
