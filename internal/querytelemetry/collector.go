@@ -3,6 +3,7 @@ package querytelemetry
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -37,7 +38,8 @@ func (c *Collector) LoadBlocklist(path string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	// Read-only: nothing was written, so a close failure changes nothing.
+	defer func() { _ = file.Close() }()
 
 	domains := make(map[string]struct{})
 	scanner := bufio.NewScanner(file)
@@ -103,7 +105,13 @@ func (c *Collector) Serve(ctx context.Context, listener net.Listener) error {
 }
 
 func (c *Collector) consume(conn net.Conn) {
-	defer conn.Close()
+	// Nothing to return the error to on a consumed stream, and a dnstap peer
+	// that already went away is the normal case.
+	defer func() {
+		if err := conn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			c.logger.Warn("close dnstap connection", "error", err)
+		}
+	}()
 	input, err := dnstap.NewFrameStreamInput(conn, true)
 	if err != nil {
 		c.logger.Warn("accept dnstap stream", "error", err)

@@ -51,12 +51,24 @@ func main() {
 	mux.HandleFunc("GET /metrics", func(writer http.ResponseWriter, _ *http.Request) {
 		total, blocked := collector.Metrics()
 		writer.Header().Set("Content-Type", "text/plain; version=0.0.4")
-		fmt.Fprintln(writer, "# HELP rilldns_dns_queries_total DNS client queries observed by the privacy-preserving dnstap collector.")
-		fmt.Fprintln(writer, "# TYPE rilldns_dns_queries_total counter")
-		fmt.Fprintf(writer, "rilldns_dns_queries_total %d\n", total)
-		fmt.Fprintln(writer, "# HELP rilldns_blocked_queries_total DNS queries matching the active compiled blocklist.")
-		fmt.Fprintln(writer, "# TYPE rilldns_blocked_queries_total counter")
-		fmt.Fprintf(writer, "rilldns_blocked_queries_total %d\n", blocked)
+		// The status line is already sent, so a scrape that disconnects
+		// mid-body cannot be reported to the client; log the first failure.
+		var writeErr error
+		emit := func(format string, args ...any) {
+			if writeErr != nil {
+				return
+			}
+			_, writeErr = fmt.Fprintf(writer, format, args...)
+		}
+		emit("# HELP rilldns_dns_queries_total DNS client queries observed by the privacy-preserving dnstap collector.\n")
+		emit("# TYPE rilldns_dns_queries_total counter\n")
+		emit("rilldns_dns_queries_total %d\n", total)
+		emit("# HELP rilldns_blocked_queries_total DNS queries matching the active compiled blocklist.\n")
+		emit("# TYPE rilldns_blocked_queries_total counter\n")
+		emit("rilldns_blocked_queries_total %d\n", blocked)
+		if writeErr != nil {
+			logger.Warn("write metrics response", "error", writeErr)
+		}
 	})
 	server := &http.Server{Addr: *metricsListen, Handler: mux, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second}
 	go func() {

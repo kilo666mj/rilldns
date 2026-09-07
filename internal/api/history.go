@@ -68,7 +68,7 @@ func historyRange(value string) (time.Duration, time.Duration, string, bool) {
 	}
 }
 
-func (s *Server) prometheusRange(parent *http.Request, query string, start, end time.Time, step time.Duration) ([]historyPoint, error) {
+func (s *Server) prometheusRange(parent *http.Request, query string, start, end time.Time, step time.Duration) (_ []historyPoint, err error) {
 	endpoint, err := url.Parse(s.prometheusURL + "/api/v1/query_range")
 	if err != nil {
 		return nil, err
@@ -88,7 +88,7 @@ func (s *Server) prometheusRange(parent *http.Request, query string, start, end 
 	if err != nil {
 		return nil, err
 	}
-	defer response.Body.Close()
+	defer closeWithError(&err, "close response body", response.Body.Close)
 	if response.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("unexpected Prometheus response %s", response.Status)
 	}

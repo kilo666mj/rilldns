@@ -221,7 +221,8 @@ func parseZone(path string) ([]dns.RR, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open %s: %w", path, err)
 	}
-	defer file.Close()
+	// Read-only: nothing was written, so a close failure changes nothing.
+	defer func() { _ = file.Close() }()
 	parser := dns.NewZoneParser(file, "", path)
 	var records []dns.RR
 	for rr, ok := parser.Next(); ok; rr, ok = parser.Next() {

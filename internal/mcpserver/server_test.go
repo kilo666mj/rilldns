@@ -29,13 +29,13 @@ func connectTestMCP(t *testing.T, apiHandler http.Handler) (*mcp.ClientSession, 
 	}
 	clientSession, err := client.Connect(context.Background(), clientTransport, nil)
 	if err != nil {
-		serverSession.Close()
+		_ = serverSession.Close()
 		apiServer.Close()
 		t.Fatal(err)
 	}
 	cleanup := func() {
-		clientSession.Close()
-		serverSession.Close()
+		_ = clientSession.Close()
+		_ = serverSession.Close()
 		apiServer.Close()
 	}
 	return clientSession, cleanup
