@@ -54,7 +54,8 @@ func inspect(path, name string) (refreshstatus.Zone, error) {
 	if err != nil {
 		return refreshstatus.Zone{}, err
 	}
-	defer f.Close()
+	// Read-only: nothing was written, so a close failure changes nothing.
+	defer func() { _ = f.Close() }()
 	p := dns.NewZoneParser(f, name, path)
 	count := 0
 	var serial uint32

@@ -109,7 +109,7 @@ func New(config Config) (*Service, error) {
 	}, nil
 }
 
-func (s *Service) Run(ctx context.Context) error {
+func (s *Service) Run(ctx context.Context) (err error) {
 	if err := os.MkdirAll(s.config.OutputDir, 0750); err != nil {
 		return err
 	}
@@ -127,8 +127,10 @@ func (s *Service) Run(ctx context.Context) error {
 	errorsChannel := make(chan error, 2)
 	go func() { errorsChannel <- serverUDP.ListenAndServe() }()
 	go func() { errorsChannel <- serverTCP.ListenAndServe() }()
-	defer serverUDP.Shutdown()
-	defer serverTCP.Shutdown()
+	// A listener that fails to shut down leaves the port held, which the next
+	// start would then fail on, so report it rather than exiting quietly.
+	defer closeWithError(&err, "shutdown UDP notify listener", serverUDP.Shutdown)
+	defer closeWithError(&err, "shutdown TCP notify listener", serverTCP.Shutdown)
 
 	for _, zone := range s.zones() {
 		s.queue(zone)
@@ -391,7 +393,8 @@ func inspectZone(path, zone string) (ZoneStatus, time.Time, error) {
 	if err != nil {
 		return ZoneStatus{}, time.Time{}, err
 	}
-	defer file.Close()
+	// Read-only: nothing was written, so a close failure changes nothing.
+	defer func() { _ = file.Close() }()
 	parser := dns.NewZoneParser(file, "", path)
 	metadata := ZoneStatus{Name: strings.TrimSuffix(zone, ".")}
 	var expiry time.Time
@@ -471,7 +474,8 @@ func writeFileAtomic(path string, data []byte, mode os.FileMode) error {
 		return err
 	}
 	temporaryName := temporary.Name()
-	defer os.Remove(temporaryName)
+	// Best effort: on success the rename has already consumed this name.
+	defer func() { _ = os.Remove(temporaryName) }()
 	if _, err = temporary.Write(data); err == nil {
 		err = temporary.Sync()
 	}

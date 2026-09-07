@@ -544,7 +544,7 @@ func (s *Store) saveHistory(zone Zone) error {
 	return writeAtomic(path, zone.content, 0o640)
 }
 
-func (s *Store) appendAudit(event auditEvent) error {
+func (s *Store) appendAudit(event auditEvent) (err error) {
 	if s.audit == "" {
 		return nil
 	}
@@ -552,7 +552,9 @@ func (s *Store) appendAudit(event auditEvent) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	// The close matters here: an audit record that fails to flush is lost, and
+	// reporting success would hide that.
+	defer closeWithError(&err, "close audit log", file.Close)
 	encoder := json.NewEncoder(file)
 	return encoder.Encode(event)
 }
@@ -772,30 +774,28 @@ func rdata(rr dns.RR) string {
 	return strings.Join(fields[4:], " ")
 }
 
-func writeAtomic(path string, content []byte, mode os.FileMode) error {
+func writeAtomic(path string, content []byte, mode os.FileMode) (err error) {
 	directory := filepath.Dir(path)
 	temporary, err := os.CreateTemp(directory, ".rilldns-*")
 	if err != nil {
 		return fmt.Errorf("create temporary zone: %w", err)
 	}
 	temporaryPath := temporary.Name()
-	defer os.Remove(temporaryPath)
+	// Best effort: on the success path the rename has already consumed this
+	// name, so the remove is expected to fail with ENOENT.
+	defer func() { _ = os.Remove(temporaryPath) }()
 	if err := temporary.Chmod(mode); err != nil {
-		temporary.Close()
-		return err
+		return errors.Join(err, closeError("close temporary zone", temporary.Close))
 	}
 	writer := bufio.NewWriter(temporary)
 	if _, err := writer.Write(content); err != nil {
-		temporary.Close()
-		return err
+		return errors.Join(err, closeError("close temporary zone", temporary.Close))
 	}
 	if err := writer.Flush(); err != nil {
-		temporary.Close()
-		return err
+		return errors.Join(err, closeError("close temporary zone", temporary.Close))
 	}
 	if err := temporary.Sync(); err != nil {
-		temporary.Close()
-		return err
+		return errors.Join(err, closeError("close temporary zone", temporary.Close))
 	}
 	if err := temporary.Close(); err != nil {
 		return err
@@ -807,7 +807,7 @@ func writeAtomic(path string, content []byte, mode os.FileMode) error {
 	if err != nil {
 		return fmt.Errorf("open zone directory for sync: %w", err)
 	}
-	defer directoryFile.Close()
+	defer closeWithError(&err, "close zone directory", directoryFile.Close)
 	if err := directoryFile.Sync(); err != nil {
 		return fmt.Errorf("sync zone directory: %w", err)
 	}

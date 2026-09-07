@@ -191,7 +191,8 @@ func writeAtomic(path string, values []string) error {
 		return err
 	}
 	temporaryPath := temporary.Name()
-	defer os.Remove(temporaryPath)
+	// Best effort: on success the rename has already consumed this name.
+	defer func() { _ = os.Remove(temporaryPath) }()
 	if _, err = temporary.Write(content); err == nil {
 		err = temporary.Chmod(0o640)
 	}

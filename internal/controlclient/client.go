@@ -124,7 +124,7 @@ func (c *Client) request(ctx context.Context, method, path string, input, output
 	return c.requestWithHeaders(ctx, method, path, input, nil, output)
 }
 
-func (c *Client) requestWithHeaders(ctx context.Context, method, path string, input any, headers http.Header, output any) error {
+func (c *Client) requestWithHeaders(ctx context.Context, method, path string, input any, headers http.Header, output any) (err error) {
 	var body io.Reader
 	if input != nil {
 		encoded, err := json.Marshal(input)
@@ -149,7 +149,7 @@ func (c *Client) requestWithHeaders(ctx context.Context, method, path string, in
 	if err != nil {
 		return fmt.Errorf("RillDNS API request failed: %w", err)
 	}
-	defer response.Body.Close()
+	defer closeWithError(&err, "close response body", response.Body.Close)
 	limited := io.LimitReader(response.Body, maxResponseBytes+1)
 	data, err := io.ReadAll(limited)
 	if err != nil {

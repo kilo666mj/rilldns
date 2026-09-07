@@ -185,23 +185,38 @@ func (s *Server) metrics(writer http.ResponseWriter, _ *http.Request) {
 		healthy = 1
 	}
 	writer.Header().Set("Content-Type", "text/plain; version=0.0.4")
-	fmt.Fprintf(writer, "# HELP rilldns_refresh_healthy Whether all refresh pipelines are healthy.\n")
-	fmt.Fprintf(writer, "# TYPE rilldns_refresh_healthy gauge\n")
-	fmt.Fprintf(writer, "rilldns_refresh_healthy %d\n", healthy)
-	fmt.Fprintf(writer, "rilldns_zone_refresh_last_success_seconds %d\n", report.Zones.LastSuccess.Unix())
-	fmt.Fprintf(writer, "rilldns_blocklist_refresh_last_success_seconds %d\n", report.Blocklists.LastSuccess.Unix())
-	fmt.Fprintf(writer, "rilldns_blocklist_domains %d\n", report.Blocklists.Domains)
-	fmt.Fprintf(writer, "rilldns_differential_last_success_seconds %d\n", report.Differential.LastSuccess.Unix())
-	fmt.Fprintf(writer, "rilldns_differential_mismatches %d\n", report.Differential.Mismatches)
-	fmt.Fprintf(writer, "rilldns_differential_queries %d\n", report.Differential.Queries)
-	if !expiry.IsZero() {
-		fmt.Fprintf(writer, "rilldns_dnssec_earliest_expiry_seconds %d\n", expiry.Unix())
+	// The status line is already sent, so a scrape that disconnects mid-body
+	// cannot be reported to the client. Keep the first failure and log it once
+	// instead of checking ten writes individually.
+	var writeErr error
+	emit := func(format string, args ...any) {
+		if writeErr != nil {
+			return
+		}
+		_, writeErr = fmt.Fprintf(writer, format, args...)
 	}
+	emit("# HELP rilldns_refresh_healthy Whether all refresh pipelines are healthy.\n")
+	emit("# TYPE rilldns_refresh_healthy gauge\n")
+	emit("rilldns_refresh_healthy %d\n", healthy)
+	emit("rilldns_zone_refresh_last_success_seconds %d\n", report.Zones.LastSuccess.Unix())
+	emit("rilldns_blocklist_refresh_last_success_seconds %d\n", report.Blocklists.LastSuccess.Unix())
+	emit("rilldns_blocklist_domains %d\n", report.Blocklists.Domains)
+	emit("rilldns_differential_last_success_seconds %d\n", report.Differential.LastSuccess.Unix())
+	emit("rilldns_differential_mismatches %d\n", report.Differential.Mismatches)
+	emit("rilldns_differential_queries %d\n", report.Differential.Queries)
+	if !expiry.IsZero() {
+		emit("rilldns_dnssec_earliest_expiry_seconds %d\n", expiry.Unix())
+	}
+	defer func() {
+		if writeErr != nil {
+			s.logger.Warn("write metrics response", "error", writeErr)
+		}
+	}()
 	if s.coreDNSMetricsURL != "" {
 		request, _ := http.NewRequest(http.MethodGet, s.coreDNSMetricsURL, nil)
 		client := &http.Client{Timeout: 3 * time.Second}
 		if response, err := client.Do(request); err == nil {
-			defer response.Body.Close()
+			defer func() { _ = response.Body.Close() }()
 			if response.StatusCode == http.StatusOK {
 				_, _ = io.Copy(writer, response.Body)
 			}
@@ -211,7 +226,7 @@ func (s *Server) metrics(writer http.ResponseWriter, _ *http.Request) {
 		request, _ := http.NewRequest(http.MethodGet, s.telemetryMetricsURL, nil)
 		client := &http.Client{Timeout: 3 * time.Second}
 		if response, err := client.Do(request); err == nil {
-			defer response.Body.Close()
+			defer func() { _ = response.Body.Close() }()
 			if response.StatusCode == http.StatusOK {
 				_, _ = io.Copy(writer, response.Body)
 			}
@@ -256,7 +271,9 @@ func (s *Server) changeZone(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	body := http.MaxBytesReader(writer, request.Body, maxRequestBytes)
-	defer body.Close()
+	// net/http closes the underlying request body itself; this wrapper's close
+	// is a formality and has nothing to report.
+	defer func() { _ = body.Close() }()
 	decoder := json.NewDecoder(body)
 	decoder.DisallowUnknownFields()
 	var input zones.ChangeRequest
@@ -295,7 +312,9 @@ func (s *Server) changeZone(writer http.ResponseWriter, request *http.Request) {
 
 func (s *Server) decodeJSON(writer http.ResponseWriter, request *http.Request, output any) bool {
 	body := http.MaxBytesReader(writer, request.Body, maxRequestBytes)
-	defer body.Close()
+	// net/http closes the underlying request body itself; this wrapper's close
+	// is a formality and has nothing to report.
+	defer func() { _ = body.Close() }()
 	decoder := json.NewDecoder(body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(output); err != nil {

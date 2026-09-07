@@ -348,7 +348,8 @@ func loadZone(path string) ([]dns.RR, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	// Read-only: nothing was written, so a close failure changes nothing.
+	defer func() { _ = file.Close() }()
 	parser := dns.NewZoneParser(file, "", path)
 	var records []dns.RR
 	for record, ok := parser.Next(); ok; record, ok = parser.Next() {

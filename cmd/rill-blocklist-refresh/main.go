@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -81,7 +82,8 @@ func run(ctx context.Context, dir, statusPath, merger, configURL string, minimum
 	if err != nil {
 		return fail(err)
 	}
-	defer os.RemoveAll(work)
+	// Best effort: a leftover scratch directory is not worth failing the run.
+	defer func() { _ = os.RemoveAll(work) }()
 	inputs := []string{filepath.Join(dir, "deny.txt")}
 	for i, source := range sources {
 		path := filepath.Join(work, fmt.Sprintf("source-%d.txt", i))
@@ -119,8 +121,9 @@ func downloadJSON(ctx context.Context, client *http.Client, url string, value an
 		return err
 	}
 	path := tmp.Name()
-	tmp.Close()
-	defer os.Remove(path)
+	// Closed immediately to hand the bare path to download, which recreates it.
+	_ = tmp.Close()
+	defer func() { _ = os.Remove(path) }()
 	if err := download(ctx, client, url, path); err != nil {
 		return err
 	}
@@ -128,10 +131,11 @@ func downloadJSON(ctx context.Context, client *http.Client, url string, value an
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	// Read-only: nothing was written, so a close failure changes nothing.
+	defer func() { _ = f.Close() }()
 	return json.NewDecoder(f).Decode(value)
 }
-func download(ctx context.Context, client *http.Client, url, path string) error {
+func download(ctx context.Context, client *http.Client, url, path string) (err error) {
 	parsed, err := parseRemoteURL(url)
 	if err != nil {
 		return err
@@ -144,7 +148,7 @@ func download(ctx context.Context, client *http.Client, url, path string) error 
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer closeWithError(&err, "close response body", resp.Body.Close)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("HTTP %s", resp.Status)
 	}
@@ -188,7 +192,8 @@ func readLines(path string) ([]string, error) {
 	if e != nil {
 		return nil, e
 	}
-	defer f.Close()
+	// Read-only: nothing was written, so a close failure changes nothing.
+	defer func() { _ = f.Close() }()
 	var out []string
 	s := bufio.NewScanner(f)
 	for s.Scan() {
@@ -205,17 +210,17 @@ func writeLines(path string, values []string) error {
 		return e
 	}
 	tmp := f.Name()
-	defer os.Remove(tmp)
+	// Best effort: on success the rename has already consumed this name.
+	defer func() { _ = os.Remove(tmp) }()
 	for _, v := range values {
 		if _, e = fmt.Fprintln(f, v); e != nil {
-			f.Close()
-			return e
+			return errors.Join(e, closeError("close temporary blocklist", f.Close))
 		}
 	}
 	if e = f.Chmod(0640); e == nil {
 		e = f.Close()
 	} else {
-		f.Close()
+		e = errors.Join(e, closeError("close temporary blocklist", f.Close))
 	}
 	if e != nil {
 		return e
@@ -236,6 +241,21 @@ func inspectHosts(path string) (int, string, error) {
 		}
 	}
 	e = s.Err()
-	f.Close()
+	// Read-only: nothing was written, so a close failure changes nothing.
+	_ = f.Close()
 	return n, hex.EncodeToString(h.Sum(nil)), e
+}
+
+// closeError runs a cleanup function and labels its failure.
+func closeError(context string, closeFn func() error) error {
+	if err := closeFn(); err != nil {
+		return fmt.Errorf("%s: %w", context, err)
+	}
+	return nil
+}
+
+// closeWithError joins a cleanup failure onto a named error return without
+// discarding the primary error.
+func closeWithError(errp *error, context string, closeFn func() error) {
+	*errp = errors.Join(*errp, closeError(context, closeFn))
 }
