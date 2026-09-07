@@ -1,1 +1,4 @@
-{{ rilldns_tsig_name }} hmac-sha256 {{ rilldns_tsig_secret }}
+key "{{ rilldns_tsig_name }}" {
+    algorithm hmac-sha256;
+    secret "{{ rilldns_tsig_secret }}";
+};
