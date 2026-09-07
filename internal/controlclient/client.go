@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/kilo666mj/rilldns/internal/blocking"
+	"github.com/kilo666mj/rilldns/internal/cloudflare"
 	"github.com/kilo666mj/rilldns/internal/refreshstatus"
 	"github.com/kilo666mj/rilldns/internal/zones"
 )
@@ -76,6 +77,50 @@ func (c *Client) ListZones(ctx context.Context) ([]zones.Zone, error) {
 		return nil, err
 	}
 	return response.Zones, nil
+}
+
+type CloudflareZone struct {
+	Name    string `json:"name"`
+	Backend string `json:"backend"`
+}
+
+func (c *Client) ListCloudflareZones(ctx context.Context) ([]CloudflareZone, error) {
+	var response struct {
+		Zones []CloudflareZone `json:"zones"`
+	}
+	if err := c.request(ctx, http.MethodGet, "/v1/providers/cloudflare/zones", nil, &response); err != nil {
+		return nil, err
+	}
+	return response.Zones, nil
+}
+
+func (c *Client) GetCloudflareRecords(ctx context.Context, zone string) (cloudflare.ZoneRecords, error) {
+	var response cloudflare.ZoneRecords
+	path := "/v1/providers/cloudflare/zones/" + url.PathEscape(strings.TrimSuffix(zone, ".")) + "/records"
+	if err := c.request(ctx, http.MethodGet, path, nil, &response); err != nil {
+		return cloudflare.ZoneRecords{}, err
+	}
+	return response, nil
+}
+
+func (c *Client) PlanCloudflareChanges(ctx context.Context, zone string, request cloudflare.PlanRequest) (cloudflare.Plan, error) {
+	var response cloudflare.Plan
+	path := "/v1/providers/cloudflare/zones/" + url.PathEscape(strings.TrimSuffix(zone, ".")) + "/plans"
+	if err := c.request(ctx, http.MethodPost, path, request, &response); err != nil {
+		return cloudflare.Plan{}, err
+	}
+	return response, nil
+}
+
+func (c *Client) ApplyCloudflareChanges(ctx context.Context, zone string, request cloudflare.ApplyRequest, actor string) (cloudflare.ApplyResult, error) {
+	var response cloudflare.ApplyResult
+	path := "/v1/providers/cloudflare/zones/" + url.PathEscape(strings.TrimSuffix(zone, ".")) + "/changes"
+	headers := make(http.Header)
+	headers.Set("X-RillDNS-Actor", actor)
+	if err := c.requestWithHeaders(ctx, http.MethodPost, path, request, headers, &response); err != nil {
+		return cloudflare.ApplyResult{}, err
+	}
+	return response, nil
 }
 
 func (c *Client) GetZone(ctx context.Context, zone string) (zones.Zone, error) {

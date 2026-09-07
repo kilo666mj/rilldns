@@ -1,6 +1,6 @@
 services:
   rilldns:
-    image: coredns/coredns:1.14.6
+    image: coredns/coredns:1.14.7
     command: -conf /etc/rilldns/Corefile
     restart: unless-stopped
     ports:

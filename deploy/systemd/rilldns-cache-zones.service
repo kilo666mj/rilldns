@@ -1,0 +1,16 @@
+[Unit]
+Description=Generate CoreDNS cache exclusions for authoritative zones
+
+[Service]
+Type=oneshot
+User=rilldns
+Group=rilldns
+UMask=0077
+ExecStartPre=+/usr/bin/install -d -o rilldns -g rilldns -m 0750 /var/lib/rilldns/zones
+ExecStart=/usr/local/bin/rill-cache-zones
+NoNewPrivileges=yes
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/rilldns

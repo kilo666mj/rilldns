@@ -1,0 +1,13 @@
+(transfer-policy) {
+    tsig {
+        secrets /etc/rilldns/transfer.keys
+        require AXFR IXFR
+    }
+    transfer {
+{% if rilldns_role == 'primary' %}
+        to *
+{% else %}
+        to {{ rilldns_primary_address }}
+{% endif %}
+    }
+}

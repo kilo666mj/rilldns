@@ -1,0 +1,9 @@
+[Unit]
+Description=Watch RillDNS authoritative zone inventory
+
+[Path]
+PathChanged=/var/lib/rilldns/zones
+Unit=rilldns-cache-zones.service
+
+[Install]
+WantedBy=multi-user.target

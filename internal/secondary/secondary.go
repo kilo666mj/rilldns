@@ -474,7 +474,8 @@ func writeFileAtomic(path string, data []byte, mode os.FileMode) error {
 		return err
 	}
 	temporaryName := temporary.Name()
-	// Best effort: on success the rename has already consumed this name.
+	// Best effort: on the success path the rename has already consumed
+	// this name, so the remove is expected to fail with ENOENT.
 	defer func() { _ = os.Remove(temporaryName) }()
 	if _, err = temporary.Write(data); err == nil {
 		err = temporary.Sync()

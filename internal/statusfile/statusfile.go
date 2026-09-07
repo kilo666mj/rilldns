@@ -18,8 +18,8 @@ func WriteJSON(path string, value any, mode os.FileMode) (err error) {
 		return err
 	}
 	tmp := f.Name()
-	// Best effort: on the success path the rename has already consumed this
-	// name, so the remove is expected to fail with ENOENT.
+	// Best effort: on the success path the rename has already consumed
+	// this name, so the remove is expected to fail with ENOENT.
 	defer func() { _ = os.Remove(tmp) }()
 	if err := f.Chmod(mode); err != nil {
 		return errors.Join(err, closeError("close temporary status file", f.Close))

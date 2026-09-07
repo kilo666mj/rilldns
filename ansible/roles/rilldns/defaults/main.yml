@@ -1,0 +1,34 @@
+---
+rilldns_release_base_url: "https://github.com/kilo666mj/rilldns/releases/download"
+rilldns_release_checksum: ""
+rilldns_coredns_version: "1.14.7"
+rilldns_coredns_base_url: "https://github.com/coredns/coredns/releases/download"
+rilldns_coredns_checksum: ""
+rilldns_user: rilldns
+rilldns_group: rilldns
+rilldns_zone_files: []
+rilldns_role: ""
+rilldns_primary_address: ""
+rilldns_secondary_address: ""
+rilldns_tsig_secret: ""
+rilldns_authoritative_zones: []
+rilldns_upstreams: []
+rilldns_api_listen: 127.0.0.1:8053
+rilldns_metrics_listen: 0.0.0.0:18053
+rilldns_prometheus_url: http://192.0.2.20:9090
+rilldns_mcp_token: ""
+rilldns_ui_enabled: false
+rilldns_ui_listen: 0.0.0.0:8083
+rilldns_oidc_issuer: ""
+rilldns_oidc_client_id: ""
+rilldns_oidc_client_secret: ""
+rilldns_oidc_redirect_url: ""
+rilldns_oidc_allowed_groups: []
+rilldns_oidc_allowed_subjects: []
+rilldns_session_key: ""
+rilldns_vip: ""
+rilldns_tsig_name: rilldns-transfer.
+rilldns_enable_blocklists: true
+rilldns_blocklist_sources:
+  - https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts
+  - https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.txt

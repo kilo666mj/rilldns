@@ -1,4 +1,4 @@
-.PHONY: test build blocklists up down logs smoke check
+.PHONY: test build blocklists up down logs smoke check coredns-version
 
 test:
 	go test ./...
@@ -15,6 +15,7 @@ build:
 	go build -o bin/rill-zone-status ./cmd/rill-zone-status
 	go build -o bin/rill-blocklist-refresh ./cmd/rill-blocklist-refresh
 	go build -o bin/rill-telemetry ./cmd/rill-telemetry
+	go build -o bin/rill-cache-zones ./cmd/rill-cache-zones
 
 blocklists:
 	./scripts/update-blocklists.sh
@@ -31,5 +32,8 @@ logs:
 smoke:
 	./scripts/smoke-test.sh
 
-check: test blocklists
+coredns-version:
+	./scripts/check-coredns-version.sh
+
+check: test blocklists coredns-version
 	docker compose config --quiet

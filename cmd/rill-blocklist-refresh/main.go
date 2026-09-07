@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -41,8 +42,13 @@ func main() {
 
 func run(ctx context.Context, dir, statusPath, merger, configURL string, minimum int) (err error) {
 	attempt := time.Now().UTC()
+	previous := loadBlocklistStatus(statusPath)
 	fail := func(cause error) error {
-		_ = statusfile.WriteJSON(statusPath, refreshstatus.Status{Kind: "blocklists", LastAttempt: attempt, Error: cause.Error()}, 0440)
+		previous.Kind = "blocklists"
+		previous.Success = false
+		previous.LastAttempt = attempt
+		previous.Error = cause.Error()
+		_ = statusfile.WriteJSON(statusPath, previous, 0440)
 		return cause
 	}
 	if err := os.MkdirAll(dir, 0750); err != nil {
@@ -121,10 +127,11 @@ func downloadJSON(ctx context.Context, client *http.Client, url string, value an
 		return err
 	}
 	path := tmp.Name()
-	// Closed immediately to hand the bare path to download, which recreates it.
+	// Closed immediately to hand the bare path to the downloader, which
+	// recreates it.
 	_ = tmp.Close()
 	defer func() { _ = os.Remove(path) }()
-	if err := download(ctx, client, url, path); err != nil {
+	if err := downloadWithParser(ctx, client, url, path, parseConfigURL); err != nil {
 		return err
 	}
 	f, err := os.Open(path)
@@ -136,7 +143,11 @@ func downloadJSON(ctx context.Context, client *http.Client, url string, value an
 	return json.NewDecoder(f).Decode(value)
 }
 func download(ctx context.Context, client *http.Client, url, path string) (err error) {
-	parsed, err := parseRemoteURL(url)
+	return downloadWithParser(ctx, client, url, path, parseRemoteURL)
+}
+
+func downloadWithParser(ctx context.Context, client *http.Client, rawURL, path string, parser func(string) (*url.URL, error)) error {
+	parsed, err := parser(rawURL)
 	if err != nil {
 		return err
 	}
@@ -170,10 +181,39 @@ func download(ctx context.Context, client *http.Client, url, path string) (err e
 	return nil
 }
 
+func loadBlocklistStatus(path string) refreshstatus.Status {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return refreshstatus.Status{}
+	}
+	var status refreshstatus.Status
+	if json.Unmarshal(content, &status) != nil {
+		return refreshstatus.Status{}
+	}
+	return status
+}
+
 func parseRemoteURL(raw string) (*url.URL, error) {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil {
 		return nil, fmt.Errorf("invalid URL: %w", err)
+	}
+	if err := validateRemoteURL(parsed); err != nil {
+		return nil, err
+	}
+	return parsed, nil
+}
+
+func parseConfigURL(raw string) (*url.URL, error) {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return nil, fmt.Errorf("invalid URL: %w", err)
+	}
+	if parsed.Scheme == "http" && parsed.User == nil {
+		ip := net.ParseIP(parsed.Hostname())
+		if ip != nil && (ip.IsPrivate() || ip.IsLoopback()) {
+			return parsed, nil
+		}
 	}
 	if err := validateRemoteURL(parsed); err != nil {
 		return nil, err

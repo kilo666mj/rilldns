@@ -1,0 +1,41 @@
+[Unit]
+Description=RillDNS management API
+After=network-online.target rilldns.service
+Wants=network-online.target
+Requires=rilldns.service
+
+[Service]
+Type=simple
+User={{ rilldns_user }}
+Group={{ rilldns_group }}
+UMask=0077
+EnvironmentFile=-/etc/rilldns/rill-api.env
+ExecStartPre=+/usr/bin/install -d -o root -g {{ rilldns_group }} -m 0770 /var/lib/rilldns/blocking
+ExecStart=/usr/local/bin/rill-api -listen {{ rilldns_api_listen }} -metrics-listen {{ rilldns_metrics_listen }} -zone-dir /var/lib/rilldns/zones -audit-log /var/lib/rilldns/audit.jsonl -dns-address 127.0.0.1:1056{% if rilldns_role == 'primary' %} -notify-address {{ rilldns_secondary_address }}:1054 -notify-tsig-name {{ rilldns_tsig_name }} -notify-tsig-secret-file /etc/rilldns/transfer.secret{% else %} -read-only{% endif %}
+Restart=on-failure
+RestartSec=2s
+NoNewPrivileges=yes
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectClock=yes
+ProtectControlGroups=yes
+ProtectHome=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/rilldns
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

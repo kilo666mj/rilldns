@@ -5,6 +5,8 @@ After=network-online.target
 Wants=network-online.target
 Requires=rilldns-telemetry.service
 After=rilldns-telemetry.service
+Requires=rilldns-cache-zones.service
+After=rilldns-cache-zones.service
 
 [Service]
 Type=simple

@@ -11,6 +11,10 @@ MCP client -> rill-mcp -> rill-api -> validate/history/publish/verify/audit -> C
 ## Tools
 
 - `dns_list_zones`: list managed zones, serials, and revisions.
+- `dns_cloudflare_list_zones`: list explicitly configured external Cloudflare zones.
+- `dns_cloudflare_list_records`: list normalized records and the synthetic revision for one configured Cloudflare zone.
+- `dns_cloudflare_plan_changes`: validate and preview exact Cloudflare record deletes and creates without writing.
+- `dns_cloudflare_apply_changes`: apply a reviewed Cloudflare batch with the exact revision and `confirm: true`, including verification, audit, and rollback.
 - `dns_refresh_status`: inspect zone-transfer, DNSSEC-signature, and blocklist refresh health.
 - `dns_list_records`: list every RRset in a zone.
 - `dns_plan_changes`: validate and preview an atomic batch without publishing it.
@@ -50,6 +54,7 @@ Use `dns-primary` for mutations. The API on `dns-secondary` enforces read-only m
 - Exact zone revision required for plans and commits.
 - Explicit `confirm: true` required for commits, creates, and deletes.
 - Exact revision and explicit confirmation required for blocklist configuration publication.
+- Exact revision and explicit confirmation required for Cloudflare DNS writes.
 - No zone-file paths or arbitrary command execution.
 - No CoreDNS configuration mutation.
 - No remote HTTP MCP transport yet.

@@ -18,25 +18,23 @@ the secondary API is explicitly read-only. Keep the management API on
 loopback, expose the UI only through an authenticated reverse proxy, and limit
 the metrics listener to the monitoring network.
 
+Keepalived provides automatic DNS VIP movement based on local service health.
+Configure the HTTPS reverse proxy with the primary UI listener as its normal
+upstream and the secondary as a backup. This preserves read-only management
+visibility during a primary failure without treating VIP ownership as writer
+election. Automatic writer promotion requires independent fencing or quorum
+and is not part of the two-node reference deployment.
+
 ## Replication
 
 The primary publishes validated zone files atomically and sends DNS NOTIFY to
 the secondary. The persistent `rill-secondary` daemon compares SOA serials and
 requests a TSIG-authenticated AXFR from a cache-free authority when a serial
-changes. After NOTIFY, the primary API waits for the cache-free secondary
-authority to serve the new SOA serial before returning; an unconfirmed replica
-is reported as a publication warning. An hourly SOA poll covers lost NOTIFY
-messages.
+changes. An hourly SOA poll covers lost NOTIFY messages.
 
 ```text
 dns-primary:1056 -- TSIG AXFR/NOTIFY --> dns-secondary:1054
-dns-primary API  -- SOA confirmation --> dns-secondary:1056
 ```
-
-The client-facing listener does not cache positive or negative answers for
-managed authoritative zones. This prevents a locally cached old RRset or
-NXDOMAIN from hiding an already-published zone snapshot; recursive answers
-outside those zones remain cached normally.
 
 Generate the shared TSIG secret during deployment. Install it as root-owned
 data on the two nodes; never store it in Git. Restrict the NOTIFY, transfer,

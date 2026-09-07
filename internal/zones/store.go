@@ -31,12 +31,8 @@ var (
 type Verifier interface {
 	WaitForSerial(ctx context.Context, zone string, serial uint32) error
 	WaitForAbsence(ctx context.Context, zone string) error
-	WaitForReplicaSerial(ctx context.Context, zone string, serial uint32) error
-	WaitForReplicaAbsence(ctx context.Context, zone string) error
 	Notify(ctx context.Context, zone string) error
 }
-
-const replicaVerificationTimeout = 15 * time.Second
 
 type Store struct {
 	dir      string
@@ -260,13 +256,6 @@ func (s *Store) Apply(ctx context.Context, name string, request ChangeRequest, a
 	if s.verifier != nil {
 		if notifyErr := s.verifier.Notify(context.WithoutCancel(ctx), current.Name); notifyErr != nil {
 			result.Warning = fmt.Sprintf("secondary NOTIFY failed: %v", notifyErr)
-		} else {
-			verifyCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), replicaVerificationTimeout)
-			replicaErr := s.verifier.WaitForReplicaSerial(verifyCtx, current.Name, serial)
-			cancel()
-			if replicaErr != nil {
-				result.Warning = fmt.Sprintf("secondary publication was not confirmed: %v", replicaErr)
-			}
 		}
 	}
 	if err := s.appendAudit(auditEvent{
@@ -339,13 +328,6 @@ func (s *Store) Create(ctx context.Context, name string, request LifecycleReques
 	if s.verifier != nil {
 		if notifyErr := s.verifier.Notify(context.WithoutCancel(ctx), canonical); notifyErr != nil {
 			result.Warning = fmt.Sprintf("secondary NOTIFY failed: %v", notifyErr)
-		} else {
-			verifyCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), replicaVerificationTimeout)
-			replicaErr := s.verifier.WaitForReplicaSerial(verifyCtx, canonical, zone.Serial)
-			cancel()
-			if replicaErr != nil {
-				result.Warning = fmt.Sprintf("secondary publication was not confirmed: %v", replicaErr)
-			}
 		}
 	}
 	_ = s.appendAudit(auditEvent{Timestamp: s.now().UTC(), Actor: actor, RequestID: requestID, Zone: canonical, Revision: result.Revision, Serial: result.Serial})
@@ -397,13 +379,6 @@ func (s *Store) Delete(ctx context.Context, name string, request LifecycleReques
 	if s.verifier != nil {
 		if notifyErr := s.verifier.Notify(context.WithoutCancel(ctx), current.Name); notifyErr != nil {
 			result.Warning = fmt.Sprintf("secondary NOTIFY failed: %v", notifyErr)
-		} else {
-			verifyCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), replicaVerificationTimeout)
-			replicaErr := s.verifier.WaitForReplicaAbsence(verifyCtx, current.Name)
-			cancel()
-			if replicaErr != nil {
-				result.Warning = fmt.Sprintf("secondary removal was not confirmed: %v", replicaErr)
-			}
 		}
 	}
 	_ = s.appendAudit(auditEvent{Timestamp: s.now().UTC(), Actor: actor, RequestID: requestID, Zone: current.Name, PreviousRevision: current.Revision, PreviousSerial: current.Serial})
@@ -781,8 +756,8 @@ func writeAtomic(path string, content []byte, mode os.FileMode) (err error) {
 		return fmt.Errorf("create temporary zone: %w", err)
 	}
 	temporaryPath := temporary.Name()
-	// Best effort: on the success path the rename has already consumed this
-	// name, so the remove is expected to fail with ENOENT.
+	// Best effort: on the success path the rename has already consumed
+	// this name, so the remove is expected to fail with ENOENT.
 	defer func() { _ = os.Remove(temporaryPath) }()
 	if err := temporary.Chmod(mode); err != nil {
 		return errors.Join(err, closeError("close temporary zone", temporary.Close))

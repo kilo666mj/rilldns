@@ -1,0 +1,27 @@
+---
+all:
+  children:
+    rilldns:
+      vars:
+        rilldns_release_version: v0.1.0
+        rilldns_authoritative_zones:
+          - example.test
+        rilldns_upstreams:
+          - 198.51.100.10:5335
+          - 198.51.100.11:5335
+        rilldns_primary_address: 192.0.2.10
+        rilldns_secondary_address: 192.0.2.11
+        rilldns_vip: 192.0.2.53
+        # Put this value in an Ansible Vault file, not in inventory.
+        rilldns_tsig_secret: "{{ vault_rilldns_tsig_secret }}"
+      hosts:
+        dns-primary.example.net:
+          ansible_host: 192.0.2.10
+          rilldns_role: primary
+          # Paths are relative to ansible/playbook.yml. Keep real zone files
+          # outside the public repository or in ansible/local/ (gitignored).
+          rilldns_zone_files:
+            - local/zones/example.test.zone
+        dns-secondary.example.net:
+          ansible_host: 192.0.2.11
+          rilldns_role: secondary

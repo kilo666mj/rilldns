@@ -1,0 +1,269 @@
+---
+- name: Validate required deployment variables
+  ansible.builtin.assert:
+    that:
+      - rilldns_role in ['primary', 'secondary']
+      - rilldns_release_version is match('^v[0-9]+\\.[0-9]+\\.[0-9]+')
+      - rilldns_primary_address | length > 0
+      - rilldns_secondary_address | length > 0
+      - rilldns_authoritative_zones | length > 0
+      - rilldns_upstreams | length > 0
+      - rilldns_tsig_secret | length >= 32
+      - rilldns_role != 'primary' or rilldns_zone_files | length > 0
+    fail_msg: >-
+      Review ansible/inventory.example.yml. Set the node role, release version,
+      both node addresses, authoritative zones, recursive upstreams, a vaulted
+      TSIG secret, and at least one primary zone file.
+
+- name: Validate optional browser UI variables
+  ansible.builtin.assert:
+    that:
+      - rilldns_oidc_issuer | length > 0
+      - rilldns_oidc_client_id | length > 0
+      - rilldns_oidc_client_secret | length > 0
+      - rilldns_oidc_redirect_url | length > 0
+      - rilldns_session_key | length >= 43
+      - (rilldns_oidc_allowed_groups | length > 0) or (rilldns_oidc_allowed_subjects | length > 0)
+    fail_msg: Enable the UI only after configuring OIDC, a session key, and an immutable group or subject allowlist.
+  when: rilldns_ui_enabled | bool
+
+- name: Map host architecture to release architecture
+  ansible.builtin.set_fact:
+    rilldns_release_arch: "{{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[ansible_architecture] | default('unsupported') }}"
+
+- name: Reject unsupported architectures
+  ansible.builtin.assert:
+    that: rilldns_release_arch != 'unsupported'
+    fail_msg: "RillDNS release bundles support x86_64 and aarch64; this host reports {{ ansible_architecture }}."
+
+- name: Create service account
+  ansible.builtin.user:
+    name: "{{ rilldns_user }}"
+    system: true
+    home: /var/lib/rilldns
+    create_home: false
+    shell: /usr/sbin/nologin
+
+- name: Create configuration and state directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default(rilldns_user) }}"
+    group: "{{ item.group | default(rilldns_group) }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: /etc/rilldns, owner: root, mode: '0750'}
+    - {path: /var/lib/rilldns, mode: '0750'}
+    - {path: /var/lib/rilldns/zones, mode: '0750'}
+    - {path: /var/lib/rilldns/status, mode: '0750'}
+    - {path: /var/lib/rilldns/history, mode: '0750'}
+    - {path: /var/lib/rilldns/blocking, mode: '0750'}
+
+- name: Download RillDNS release bundle
+  ansible.builtin.get_url:
+    url: "{{ rilldns_release_base_url }}/{{ rilldns_release_version }}/rilldns-{{ rilldns_release_version }}-linux-{{ rilldns_release_arch }}.tar.gz"
+    dest: "/tmp/rilldns-{{ rilldns_release_version }}-linux-{{ rilldns_release_arch }}.tar.gz"
+    checksum: "{{ rilldns_release_checksum | default(omit, true) }}"
+    mode: '0644'
+
+- name: Create release extraction directory
+  ansible.builtin.file:
+    path: "/tmp/rilldns-{{ rilldns_release_version }}"
+    state: directory
+    mode: '0755'
+
+- name: Extract RillDNS release bundle
+  ansible.builtin.unarchive:
+    src: "/tmp/rilldns-{{ rilldns_release_version }}-linux-{{ rilldns_release_arch }}.tar.gz"
+    dest: "/tmp/rilldns-{{ rilldns_release_version }}"
+    remote_src: true
+
+- name: Install RillDNS commands
+  ansible.builtin.copy:
+    src: "/tmp/rilldns-{{ rilldns_release_version }}/rilldns-{{ rilldns_release_version }}-linux-{{ rilldns_release_arch }}/bin/{{ item }}"
+    dest: "/usr/local/bin/{{ item }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - blocklist-merge
+    - rill-api
+    - rill-blocklist-refresh
+    - rill-cache-zones
+    - rill-diff
+    - rill-ha
+    - rill-mcp
+    - rill-notify
+    - rill-reconcile
+    - rill-secondary
+    - rill-telemetry
+    - rill-zone-status
+  notify: Restart rilldns stack
+
+- name: Download pinned CoreDNS
+  ansible.builtin.get_url:
+    url: "{{ rilldns_coredns_base_url }}/v{{ rilldns_coredns_version }}/coredns_{{ rilldns_coredns_version }}_linux_{{ rilldns_release_arch }}.tgz"
+    dest: "/tmp/coredns-{{ rilldns_coredns_version }}-{{ rilldns_release_arch }}.tgz"
+    checksum: "{{ rilldns_coredns_checksum | default(omit, true) }}"
+    mode: '0644'
+
+- name: Install pinned CoreDNS binary
+  ansible.builtin.unarchive:
+    src: "/tmp/coredns-{{ rilldns_coredns_version }}-{{ rilldns_release_arch }}.tgz"
+    dest: /usr/local/bin
+    remote_src: true
+    include: [coredns]
+    owner: root
+    group: root
+    mode: '0755'
+  notify: Restart rilldns stack
+
+- name: Name CoreDNS as rilldns
+  ansible.builtin.file:
+    src: /usr/local/bin/coredns
+    dest: /usr/local/bin/rilldns
+    state: link
+    force: true
+
+- name: Install primary zone files
+  ansible.builtin.copy:
+    src: "{{ item if item is abs else playbook_dir + '/' + item }}"
+    dest: "/var/lib/rilldns/zones/{{ item | basename }}"
+    owner: "{{ rilldns_user }}"
+    group: "{{ rilldns_group }}"
+    mode: '0640'
+  loop: "{{ rilldns_zone_files }}"
+  when: rilldns_role == 'primary'
+  notify: Restart rilldns stack
+
+- name: Install TSIG secret
+  ansible.builtin.copy:
+    content: "{{ rilldns_tsig_secret }}\n"
+    dest: /etc/rilldns/transfer.secret
+    owner: root
+    group: "{{ rilldns_group }}"
+    mode: '0640'
+  no_log: true
+
+- name: Install CoreDNS TSIG key file
+  ansible.builtin.template:
+    src: transfer.keys.j2
+    dest: /etc/rilldns/transfer.keys
+    owner: root
+    group: "{{ rilldns_group }}"
+    mode: '0640'
+  no_log: true
+  notify: Restart rilldns stack
+
+- name: Install RillDNS configuration
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: "{{ item.group | default('root') }}"
+    mode: "{{ item.mode | default('0644') }}"
+  loop:
+    - {src: Corefile.j2, dest: /etc/rilldns/Corefile}
+    - {src: transfer.conf.j2, dest: /etc/rilldns/transfer.conf}
+    - {src: rilldns-api.service.j2, dest: /etc/systemd/system/rilldns-api.service}
+    - {src: rilldns-secondary.service.j2, dest: /etc/systemd/system/rilldns-secondary.service}
+    - {src: rilldns-diff.service.j2, dest: /etc/systemd/system/rilldns-diff.service}
+  notify:
+    - Reload systemd
+    - Restart rilldns stack
+
+- name: Install restricted API environment
+  ansible.builtin.template:
+    src: rill-api.env.j2
+    dest: /etc/rilldns/rill-api.env
+    owner: root
+    group: "{{ rilldns_group }}"
+    mode: '0640'
+  no_log: true
+  notify: Restart rilldns stack
+
+- name: Install static systemd units
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../deploy/systemd/{{ item }}"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop:
+    - rilldns.service
+    - rilldns-telemetry.service
+    - rilldns-cache-zones.service
+    - rilldns-cache-zones.path
+    - rilldns-primary-status.service
+    - rilldns-primary-status.timer
+    - rilldns-refresh-blocklists.service
+    - rilldns-refresh-blocklists.timer
+    - rilldns-diff.timer
+  notify:
+    - Reload systemd
+    - Restart rilldns stack
+
+- name: Install blocklist source configuration
+  ansible.builtin.copy:
+    content: "{{ rilldns_blocklist_sources | join('\n') }}\n"
+    dest: /var/lib/rilldns/blocking/sources.txt
+    owner: "{{ rilldns_user }}"
+    group: "{{ rilldns_group }}"
+    mode: '0640'
+  when: rilldns_enable_blocklists | bool
+
+- name: Create initial blocklist files
+  ansible.builtin.copy:
+    content: ""
+    dest: "/var/lib/rilldns/blocking/{{ item }}"
+    owner: "{{ rilldns_user }}"
+    group: "{{ rilldns_group }}"
+    mode: '0640'
+    force: false
+  loop:
+    - merged.hosts
+    - allow.txt
+    - deny.txt
+
+- name: Flush configuration handlers before enabling services
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable common RillDNS services and timers
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop:
+    - rilldns-telemetry.service
+    - rilldns-cache-zones.path
+    - rilldns.service
+    - rilldns-api.service
+    - rilldns-diff.timer
+    - rilldns-refresh-blocklists.timer
+
+- name: Enable node-role service
+  ansible.builtin.systemd_service:
+    name: "{{ 'rilldns-primary-status.timer' if rilldns_role == 'primary' else 'rilldns-secondary.service' }}"
+    enabled: true
+    state: started
+
+- name: Verify DNS health endpoint
+  ansible.builtin.uri:
+    url: http://127.0.0.1:18080/health
+    return_content: true
+    status_code: 200
+  register: rilldns_health
+  retries: 10
+  delay: 2
+  until: rilldns_health.status == 200
+
+- name: Verify management metrics endpoint
+  ansible.builtin.uri:
+    url: http://127.0.0.1:18053/metrics
+    return_content: true
+    status_code: 200
+  register: rilldns_metrics
+  retries: 10
+  delay: 2
+  until: rilldns_metrics.status == 200
