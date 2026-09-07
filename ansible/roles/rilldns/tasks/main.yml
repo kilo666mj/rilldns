@@ -169,7 +169,10 @@
       - /var/lib/rilldns/cache-zones.conf
   changed_when: true
 
-- name: Own the generated cache exclusions
+- name: Restrict the generated cache exclusions
+  # Skipped under --check, where the generator above has not run and the file
+  # therefore does not exist yet.
+  when: not ansible_check_mode
   ansible.builtin.file:
     path: /var/lib/rilldns/cache-zones.conf
     owner: "{{ rilldns_user }}"
