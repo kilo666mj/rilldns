@@ -156,6 +156,26 @@
   no_log: true
   notify: Restart rilldns stack
 
+- name: Generate the CoreDNS cache exclusions
+  # The Corefile imports this file, and CoreDNS treats a missing import as a
+  # parse error. The path unit that regenerates it is not started until after
+  # the restart handler has already run, so bootstrap it now.
+  ansible.builtin.command:
+    argv:
+      - /usr/local/bin/rill-cache-zones
+      - -zone-dir
+      - /var/lib/rilldns/zones
+      - -output
+      - /var/lib/rilldns/cache-zones.conf
+  changed_when: true
+
+- name: Own the generated cache exclusions
+  ansible.builtin.file:
+    path: /var/lib/rilldns/cache-zones.conf
+    owner: "{{ rilldns_user }}"
+    group: "{{ rilldns_group }}"
+    mode: '0640'
+
 - name: Install RillDNS configuration
   ansible.builtin.template:
     src: "{{ item.src }}"
