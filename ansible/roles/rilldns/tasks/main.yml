@@ -23,8 +23,8 @@
       - rilldns_oidc_client_secret | length > 0
       - rilldns_oidc_redirect_url | length > 0
       - rilldns_session_key | length >= 43
-      - (rilldns_oidc_allowed_groups | length > 0) or (rilldns_oidc_allowed_subjects | length > 0)
-    fail_msg: Enable the UI only after configuring OIDC, a session key, and an immutable group or subject allowlist.
+      - (rilldns_oidc_allowed_groups | length > 0) or (rilldns_oidc_allowed_subjects | length > 0) or (rilldns_oidc_allowed_emails | length > 0)
+    fail_msg: Enable the UI only after configuring OIDC, a session key, and a group, subject or email allowlist.
   when: rilldns_ui_enabled | bool
 
 - name: Map host architecture to release architecture
@@ -223,6 +223,19 @@
   notify:
     - Reload systemd
     - Restart rilldns stack
+
+- name: Hand existing state to the service account
+  # These services run as root on nodes provisioned before this role, and this
+  # role runs them as rilldns. Files they created as root are otherwise left
+  # unwritable by the account that now owns the work.
+  ansible.builtin.file:
+    path: "{{ item }}"
+    owner: "{{ rilldns_user }}"
+    group: "{{ rilldns_group }}"
+    state: file
+  loop:
+    - /var/lib/rilldns/blocking/merged.hosts
+  failed_when: false
 
 - name: Install blocklist source configuration
   ansible.builtin.copy:

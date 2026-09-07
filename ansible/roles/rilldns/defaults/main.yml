@@ -25,6 +25,10 @@ rilldns_oidc_client_secret: ""
 rilldns_oidc_redirect_url: ""
 rilldns_oidc_allowed_groups: []
 rilldns_oidc_allowed_subjects: []
+rilldns_oidc_allowed_emails: []
+rilldns_oidc_scopes: []
+rilldns_cloudflare_zones: []
+rilldns_cloudflare_token_file: /etc/rilldns/cloudflare.token
 rilldns_session_key: ""
 rilldns_vip: ""
 rilldns_tsig_name: rilldns-transfer.
