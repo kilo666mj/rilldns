@@ -1,5 +1,8 @@
 [Unit]
 Description=Generate CoreDNS cache exclusions for authoritative zones
+# The path unit fires once per zone file written, so a multi-zone install
+# would otherwise trip the default start rate limit and leave this failed.
+StartLimitIntervalSec=0
 
 [Service]
 Type=oneshot
