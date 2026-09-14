@@ -33,6 +33,11 @@ rilldns_session_key: ""
 rilldns_vip: ""
 rilldns_tsig_name: rilldns-transfer.
 rilldns_enable_blocklists: true
+rilldns_query_analytics_mode: aggregate
+rilldns_query_analytics_retention: 168h
+rilldns_query_analytics_max_domains: 512
+rilldns_query_analytics_max_clients: 128
+rilldns_query_analytics_recent_queries: 1000
 rilldns_blocklist_sources:
   - https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts
   - https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.txt

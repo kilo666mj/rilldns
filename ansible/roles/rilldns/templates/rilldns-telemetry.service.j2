@@ -6,10 +6,10 @@ Before=rilldns.service
 
 [Service]
 Type=simple
-User=rilldns
-Group=rilldns
+User={{ rilldns_user }}
+Group={{ rilldns_group }}
 UMask=0077
-ExecStart=/usr/local/bin/rill-telemetry -dnstap-listen 127.0.0.1:6000 -metrics-listen 127.0.0.1:19154 -blocklist /var/lib/rilldns/blocking/merged.hosts -analytics-mode aggregate -analytics-retention 168h -analytics-state /var/lib/rilldns/query-analytics.json
+ExecStart=/usr/local/bin/rill-telemetry -dnstap-listen 127.0.0.1:6000 -metrics-listen 127.0.0.1:19154 -blocklist /var/lib/rilldns/blocking/merged.hosts -analytics-mode {{ rilldns_query_analytics_mode }} -analytics-retention {{ rilldns_query_analytics_retention }} -analytics-state /var/lib/rilldns/query-analytics.json -analytics-max-domains {{ rilldns_query_analytics_max_domains }} -analytics-max-clients {{ rilldns_query_analytics_max_clients }} -analytics-recent-queries {{ rilldns_query_analytics_recent_queries }}
 Restart=on-failure
 RestartSec=2s
 NoNewPrivileges=yes

@@ -27,6 +27,18 @@
     fail_msg: Enable the UI only after configuring OIDC, a session key, and a group, subject or email allowlist.
   when: rilldns_ui_enabled | bool
 
+- name: Validate query analytics mode
+  ansible.builtin.assert:
+    that:
+      - rilldns_query_analytics_mode in ['aggregate', 'statistics', 'detailed']
+      - rilldns_query_analytics_max_domains | int >= 16
+      - rilldns_query_analytics_max_domains | int <= 10000
+      - rilldns_query_analytics_max_clients | int >= 8
+      - rilldns_query_analytics_max_clients | int <= 4096
+      - rilldns_query_analytics_recent_queries | int >= 1
+      - rilldns_query_analytics_recent_queries | int <= 10000
+    fail_msg: Review the bounded query analytics mode and counter limits.
+
 - name: Map host architecture to release architecture
   ansible.builtin.set_fact:
     rilldns_release_arch: "{{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[ansible_architecture] | default('unsupported') }}"
@@ -190,6 +202,7 @@
     - {src: Corefile.j2, dest: /etc/rilldns/Corefile}
     - {src: transfer.conf.j2, dest: /etc/rilldns/transfer.conf}
     - {src: rilldns-api.service.j2, dest: /etc/systemd/system/rilldns-api.service}
+    - {src: rilldns-telemetry.service.j2, dest: /etc/systemd/system/rilldns-telemetry.service}
     - {src: rilldns-secondary.service.j2, dest: /etc/systemd/system/rilldns-secondary.service}
     - {src: rilldns-diff.service.j2, dest: /etc/systemd/system/rilldns-diff.service}
   notify:
@@ -215,7 +228,6 @@
     mode: '0644'
   loop:
     - rilldns.service
-    - rilldns-telemetry.service
     - rilldns-cache-zones.service
     - rilldns-cache-zones.path
     - rilldns-primary-status.service

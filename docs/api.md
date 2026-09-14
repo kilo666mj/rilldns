@@ -81,6 +81,14 @@ query rate, cache-hit ratio, NXDOMAIN rate, and cache entries. Valid ranges are
 `1h`, `6h`, `24h`, and `7d`. The endpoint does not accept PromQL, metric names,
 or arbitrary Prometheus URLs from callers.
 
+`GET /v1/query-analytics?range=24h&limit=10&recent=100` proxies the
+loopback-only telemetry snapshot for the authenticated UI. It returns the
+configured privacy mode, totals, blocked percentage, bounded domain/client/type
+rankings, and truncation status. In `detailed` mode it also returns the newest
+bounded recent queries. Valid ranges are `1h`, `6h`, `24h`, and `7d`; ranking
+limits are 1–100 and recent-query limits are 0–1000. The endpoint does not
+expose the analytics state file or accept a caller-selected upstream URL.
+
 ## Blocklist configuration
 
 `GET /v1/blocklists/config` returns the complete HTTPS source list, explicit
