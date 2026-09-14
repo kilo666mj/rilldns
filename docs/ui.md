@@ -57,8 +57,12 @@ The UI provides:
 - revisioned blocklist source and allow/deny configuration.
 - Cloudflare zone allowlist configuration plus external record browsing,
   planning, confirmed application, and verification status.
-- aggregate blocked-query rate and percentage graphs from dnstap; query names
-  and client identities are discarded immediately and are never persisted.
+- a query analytics view with totals, blocked percentage, top domains, top
+  blocked domains, top clients, query types, and—only in `detailed` mode—a
+  bounded, filterable recent-query list;
+- aggregate blocked-query rate and percentage graphs from dnstap. In the
+  default `aggregate` mode query names and client identities are discarded
+  immediately and never persisted.
 
 Public `/healthz` on the UI listener supports reverse-proxy health checks. All
 `/v1/*` routes require a valid Pocket ID session. Prometheus continues to use

@@ -17,17 +17,23 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// Collector consumes client-query dnstap frames and retains only aggregate
-// counters. Query names and client addresses are never logged or persisted.
+// Collector consumes client-query dnstap frames. Aggregate mode retains only
+// global counters; explicitly configured analytics modes receive bounded
+// observations without changing the dnstap ingestion path.
 type Collector struct {
-	logger  *slog.Logger
-	blocked atomic.Pointer[map[string]struct{}]
-	total   atomic.Uint64
-	blocks  atomic.Uint64
+	logger    *slog.Logger
+	blocked   atomic.Pointer[map[string]struct{}]
+	total     atomic.Uint64
+	blocks    atomic.Uint64
+	analytics *Analytics
 }
 
 func New(logger *slog.Logger) *Collector {
-	c := &Collector{logger: logger}
+	return NewWithAnalytics(logger, nil)
+}
+
+func NewWithAnalytics(logger *slog.Logger, analytics *Analytics) *Collector {
+	c := &Collector{logger: logger, analytics: analytics}
 	empty := map[string]struct{}{}
 	c.blocked.Store(&empty)
 	return c
@@ -135,11 +141,44 @@ func (c *Collector) ConsumeFrame(frame []byte) {
 	}
 	name := strings.TrimSuffix(strings.ToLower(message.Question[0].Name), ".")
 	c.total.Add(1)
-	if _, found := (*c.blocked.Load())[name]; found {
+	_, blocked := (*c.blocked.Load())[name]
+	if blocked {
 		c.blocks.Add(1)
+	}
+	if c.analytics != nil {
+		client := net.IP(tap.Message.GetQueryAddress()).String()
+		if client == "<nil>" {
+			client = "unknown"
+		}
+		queryType := dns.TypeToString[message.Question[0].Qtype]
+		if queryType == "" {
+			queryType = fmt.Sprintf("TYPE%d", message.Question[0].Qtype)
+		}
+		observedAt := time.Time{}
+		if tap.Message.GetQueryTimeSec() != 0 {
+			observedAt = time.Unix(int64(tap.Message.GetQueryTimeSec()), int64(tap.Message.GetQueryTimeNsec())).UTC()
+		}
+		c.analytics.Record(Observation{
+			Time: observedAt, Domain: name, Client: client, Type: queryType,
+			Protocol: tap.Message.GetSocketProtocol().String(), Blocked: blocked,
+		})
 	}
 }
 
 func (c *Collector) Metrics() (total, blocked uint64) {
 	return c.total.Load(), c.blocks.Load()
+}
+
+func (c *Collector) Analytics(rangeName string, limit, recentLimit int) (Snapshot, error) {
+	if c.analytics == nil {
+		return Snapshot{Mode: ModeAggregate, Range: defaultRange(rangeName)}, nil
+	}
+	return c.analytics.Snapshot(rangeName, limit, recentLimit)
+}
+
+func (c *Collector) SaveAnalytics(path string) error {
+	if c.analytics == nil {
+		return nil
+	}
+	return c.analytics.Save(path)
 }

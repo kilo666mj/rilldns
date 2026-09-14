@@ -76,6 +76,12 @@ The browser UI is disabled by default. To enable it, set
 redirect URL, session key, and at least one immutable group or subject
 allowlist. Preflight validation rejects incomplete UI configurations.
 
+Query analytics remain in privacy-preserving `aggregate` mode unless explicitly
+enabled. Set `rilldns_query_analytics_mode: statistics` for bounded top-domain,
+top-client, blocked-domain, and query-type rankings. Use `detailed` only when a
+bounded recent-query list is required. Retention defaults to seven days and is
+configured with `rilldns_query_analytics_retention`.
+
 ## Firewall and virtual IP
 
 Firewall and VIP implementations differ across distributions and networks, so

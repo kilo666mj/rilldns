@@ -23,29 +23,30 @@ import (
 const maxRequestBytes = 1 << 20
 
 type Server struct {
-	store                *zones.Store
-	blocking             *blocking.Store
-	logger               *slog.Logger
-	readOnly             bool
-	statusDir            string
-	prometheusURL        string
-	coreDNSMetricsURL    string
-	telemetryMetricsURL  string
-	seq                  atomic.Uint64
-	cloudflare           CloudflareReader
-	cloudflareZones      []string
-	cloudflareApplies    atomic.Uint64
-	cloudflareFailures   atomic.Uint64
-	cloudflareRollbacks  atomic.Uint64
-	cloudflareMu         sync.RWMutex
-	cloudflareConfig     cloudflare.Config
-	cloudflareConfigPath string
-	haNode               string
-	haRole               string
-	haPeerName           string
-	haPeerHealthURL      string
-	haPeerStatusURL      string
-	haVIP                string
+	store                 *zones.Store
+	blocking              *blocking.Store
+	logger                *slog.Logger
+	readOnly              bool
+	statusDir             string
+	prometheusURL         string
+	coreDNSMetricsURL     string
+	telemetryMetricsURL   string
+	telemetryAnalyticsURL string
+	seq                   atomic.Uint64
+	cloudflare            CloudflareReader
+	cloudflareZones       []string
+	cloudflareApplies     atomic.Uint64
+	cloudflareFailures    atomic.Uint64
+	cloudflareRollbacks   atomic.Uint64
+	cloudflareMu          sync.RWMutex
+	cloudflareConfig      cloudflare.Config
+	cloudflareConfigPath  string
+	haNode                string
+	haRole                string
+	haPeerName            string
+	haPeerHealthURL       string
+	haPeerStatusURL       string
+	haVIP                 string
 }
 
 type CloudflareReader interface {
@@ -84,6 +85,9 @@ func (s *Server) SetMetricsSources(prometheusURL, coreDNSMetricsURL string, tele
 		s.telemetryMetricsURL = telemetryMetricsURL[0]
 	}
 }
+func (s *Server) SetTelemetryAnalyticsSource(source string) {
+	s.telemetryAnalyticsURL = strings.TrimSpace(source)
+}
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
@@ -101,6 +105,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/status/refresh", s.refreshStatus)
 	mux.HandleFunc("GET /v1/status/ha", s.haStatus)
 	mux.HandleFunc("GET /v1/metrics/history", s.metricsHistory)
+	mux.HandleFunc("GET /v1/query-analytics", s.queryAnalytics)
 	mux.HandleFunc("GET /v1/blocklists/config", s.getBlocklistConfig)
 	mux.HandleFunc("PUT /v1/blocklists/config", s.updateBlocklistConfig)
 	mux.HandleFunc("GET /metrics", s.metrics)

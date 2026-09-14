@@ -25,8 +25,8 @@ firewalling, backups, and key management.
 - TSIG-authenticated NOTIFY and AXFR replication with last-known-good snapshots
 - UDP/TCP differential probes across authoritative records and edge cases
 - Daily compiled hosts/domain blocking with allow and deny overrides
-- Privacy-preserving blocked-query rates and percentages—no query or client
-  history is retained
+- Configurable query analytics with aggregate-only privacy by default, bounded
+  top-domain/client statistics, and an optional short recent-query view
 - REST management API and SSH-stdio MCP tools
 - OIDC Authorization Code + PKCE web console
 - Health, readiness, CoreDNS, refresh, replication, and differential metrics
@@ -98,10 +98,12 @@ docs/                      operations and API documentation
 ## Security and privacy
 
 Secrets are read from root-owned files or environment variables and must never
-be committed. The query telemetry collector compares each name against the
-in-memory block set, increments aggregate counters, and immediately discards
-the name and client address. See [SECURITY.md](SECURITY.md) for reporting and
-the current security model.
+be committed. Query telemetry defaults to `aggregate` mode, which compares each
+name against the in-memory block set, increments aggregate counters, and
+immediately discards the name and client address. Identifier-bearing
+`statistics` and `detailed` modes require explicit deployment configuration and
+enforce bounded retention. See [SECURITY.md](SECURITY.md) for reporting and the
+current security model.
 
 ## Status
 

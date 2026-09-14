@@ -36,6 +36,7 @@ func main() {
 	prometheusURL := flag.String("prometheus-url", envOr("RILLDNS_PROMETHEUS_URL", "http://192.0.2.20:9090"), "Prometheus URL used for fixed UI history queries")
 	coreDNSMetricsURL := flag.String("coredns-metrics-url", envOr("RILLDNS_COREDNS_METRICS_URL", "http://127.0.0.1:19153/metrics"), "local CoreDNS metrics URL to re-export")
 	telemetryMetricsURL := flag.String("telemetry-metrics-url", envOr("RILLDNS_TELEMETRY_METRICS_URL", "http://127.0.0.1:19154/metrics"), "local aggregate query telemetry metrics URL to re-export")
+	telemetryAnalyticsURL := flag.String("telemetry-analytics-url", envOr("RILLDNS_TELEMETRY_ANALYTICS_URL", "http://127.0.0.1:19154/analytics"), "local query analytics endpoint used by the authenticated UI")
 	uiListen := flag.String("ui-listen", os.Getenv("RILLDNS_UI_LISTEN"), "optional OIDC-protected web UI listen address")
 	cloudflareZones := flag.String("cloudflare-zones", os.Getenv("RILLDNS_CLOUDFLARE_ZONES"), "optional comma-separated Cloudflare zone-name allowlist")
 	cloudflareTokenFile := flag.String("cloudflare-token-file", os.Getenv("RILLDNS_CLOUDFLARE_TOKEN_FILE"), "file containing the Cloudflare API token")
@@ -92,6 +93,7 @@ func main() {
 		apiServer.SetCloudflareConfigPath(cloudflareConfigPath)
 	}
 	apiServer.SetMetricsSources(*prometheusURL, *coreDNSMetricsURL, *telemetryMetricsURL)
+	apiServer.SetTelemetryAnalyticsSource(*telemetryAnalyticsURL)
 	apiHandler := apiServer.Handler()
 	var mainHandler http.Handler = apiHandler
 	var hostedMCP http.Handler

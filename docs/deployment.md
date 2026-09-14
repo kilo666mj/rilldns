@@ -48,9 +48,21 @@ atomic and refuses an unexpectedly small result, preserving the last known
 good snapshot on failure.
 
 CoreDNS sends client-query dnstap frames over loopback to `rill-telemetry`.
-The collector compares names with the in-memory block set, increments total and
-blocked counters, and immediately discards query names and client addresses.
-Prometheus stores aggregate rates and percentages only.
+The collector compares names with the in-memory block set and always exports
+aggregate total and blocked counters. Query analytics have three explicit
+modes:
+
+- `aggregate` is the default and immediately discards query names and client
+  addresses;
+- `statistics` retains bounded five-minute domain, client, blocked-domain, and
+  query-type counters for Pi-hole-style rankings;
+- `detailed` adds a bounded recent-query ring to the statistics.
+
+Statistics are atomically checkpointed to a mode-0600 state file once per
+minute and expired according to the configured retention. Prometheus continues
+to store aggregate rates only; domain and client names are never used as metric
+labels. The loopback analytics endpoint is proxied through the authenticated
+management UI.
 
 ## Authentication
 
