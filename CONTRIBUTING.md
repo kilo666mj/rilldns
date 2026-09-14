@@ -4,7 +4,7 @@ Thanks for helping improve RillDNS.
 
 ## Development
 
-Install Go 1.26 or later, Docker with Compose, `dig`, and `curl`, then run:
+Install Go 1.27.1 or later, Docker with Compose, `dig`, and `curl`, then run:
 
 ```sh
 make test
