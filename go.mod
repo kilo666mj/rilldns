@@ -1,6 +1,6 @@
 module github.com/kilo666mj/rilldns
 
-go 1.26
+go 1.27.1
 
 require (
 	github.com/dnstap/golang-dnstap v0.4.0

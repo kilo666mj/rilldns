@@ -35,7 +35,7 @@ firewalling, backups, and key management.
 
 ## Try it locally
 
-Requirements: Docker with Compose, Go 1.26 or later, `dig`, and `curl`.
+Requirements: Docker with Compose, Go 1.27.1 or later, `dig`, and `curl`.
 
 ```sh
 make test

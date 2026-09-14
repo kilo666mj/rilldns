@@ -19,10 +19,20 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.13.2
       - name: Check formatting
-        run: test -z "$(gofmt -l $(find cmd internal -name '*.go'))"
+        run: |
+          unformatted=$(find cmd internal -name '*.go' -exec gofmt -l {} +)
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-clean:"
+            echo "$unformatted"
+            exit 1
+          fi
       - name: Test
-        run: go test ./...
+        run: go test -race ./...
       - name: Vet
         run: go vet ./...
       - name: Validate Compose
@@ -83,7 +93,7 @@ jobs:
           done
           (cd dist && sha256sum ./*.tar.gz > SHA256SUMS)
       - name: Publish GitHub release
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           generate_release_notes: true
           files: |
