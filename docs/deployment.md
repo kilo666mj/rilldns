@@ -84,10 +84,11 @@ compatible provider; any conforming OIDC provider should work.
 - Back up zone files, role metadata, audit records, and generated secrets.
 - Test failover and restoration before making the VIP the only client path.
 
-The files under [`deploy/systemd`](../deploy/systemd),
-[`deploy/nginx`](../deploy/nginx), and
-[`deploy/prometheus`](../deploy/prometheus) are examples. Adapt addresses,
-firewall policy, paths, users, and service dependencies to your environment.
+The files under [`deploy/systemd`](../deploy/systemd/README.md),
+[`deploy/nginx`](../deploy/nginx/README.md), and
+[`deploy/prometheus`](../deploy/prometheus/README.md) are examples. Adapt
+addresses, firewall policy, paths, users, and service dependencies to your
+environment.
 
 ## Tagged releases
 
