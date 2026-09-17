@@ -38,6 +38,9 @@ rilldns_query_analytics_retention: 168h
 rilldns_query_analytics_max_domains: 512
 rilldns_query_analytics_max_clients: 128
 rilldns_query_analytics_recent_queries: 1000
+# Additional passive dnstap consumers. The loopback analytics tap remains
+# unconditional; deployment-specific endpoints belong in private inventory.
+rilldns_additional_dnstap_endpoints: []
 rilldns_blocklist_sources:
   - https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts
   - https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.txt

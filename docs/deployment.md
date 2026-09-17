@@ -48,6 +48,9 @@ atomic and refuses an unexpectedly small result, preserving the last known
 good snapshot on failure.
 
 CoreDNS sends client-query dnstap frames over loopback to `rill-telemetry`.
+Optional `rilldns_additional_dnstap_endpoints` add passive TCP consumers while
+leaving that privacy-preserving local analytics path intact. Keep real
+collector addresses in the ignored deployment inventory.
 The collector compares names with the in-memory block set and always exports
 aggregate total and blocked counters. Query analytics have three explicit
 modes:

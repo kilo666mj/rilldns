@@ -12,6 +12,10 @@ all:
         rilldns_primary_address: 192.0.2.10
         rilldns_secondary_address: 192.0.2.11
         rilldns_vip: 192.0.2.53
+        # Optional passive consumers; keep real collector addresses in the
+        # ignored deployment inventory.
+        rilldns_additional_dnstap_endpoints:
+          - tcp://192.0.2.20:6001
         # Put this value in an Ansible Vault file, not in inventory.
         rilldns_tsig_secret: "{{ vault_rilldns_tsig_secret }}"
       hosts:
