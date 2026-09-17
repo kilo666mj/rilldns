@@ -1,5 +1,5 @@
-github.com/coreos/go-oidc/v3 v3.19.0 h1:F/xyOi3x1UnG1U27YVnM1N6bHiL1K2upi6U/0qr8r+I=
-github.com/coreos/go-oidc/v3 v3.19.0/go.mod h1:DYCf24+ncYi+XkIH97GY1+dqoRlbaSI26KVTCI9SrY4=
+github.com/coreos/go-oidc/v3 v3.21.0 h1:wZo4Q9Pum8dYEj0eMUPrqR+kvuGkeUplbLpNCkBqoWM=
+github.com/coreos/go-oidc/v3 v3.21.0/go.mod h1:DYCf24+ncYi+XkIH97GY1+dqoRlbaSI26KVTCI9SrY4=
 github.com/dnstap/golang-dnstap v0.4.0 h1:KRHBoURygdGtBjDI2w4HifJfMAhhOqDuktAokaSa234=
 github.com/dnstap/golang-dnstap v0.4.0/go.mod h1:FqsSdH58NAmkAvKcpyxht7i4FoBjKu8E4JUPt8ipSUs=
 github.com/farsightsec/golang-framestream v0.3.0 h1:/spFQHucTle/ZIPkYqrfshQqPe2VQEzesH243TjIwqA=
@@ -22,8 +22,8 @@ github.com/google/jsonschema-go v0.4.3 h1:/DBOLZTfDow7pe2GmaJNhltueGTtDKICi8V8p+
 github.com/google/jsonschema-go v0.4.3/go.mod h1:r5quNTdLOYEz95Ru18zA0ydNbBuYoo9tgaYcxEYhJVE=
 github.com/kilo666mj/mcpkit v0.1.0 h1:+dxBnxrhBzyKPdGseviVHu30obXJbq9YZKTfCER9odE=
 github.com/kilo666mj/mcpkit v0.1.0/go.mod h1:K90JuDJZ7QV7LKGwagxr4PWLa5Wf86m+CCTs7ZMK5qA=
-github.com/kilo666mj/oidcrp v0.1.0 h1:EDVnlO3FVOuhHp6wNvo7J3hAw3p7avLFpyRPdpmxa10=
-github.com/kilo666mj/oidcrp v0.1.0/go.mod h1:gLAy6QfXWwDkYP0q/sIr/MC+kE1YUPFNNT05hy9KlqI=
+github.com/kilo666mj/oidcrp v0.2.0 h1:P8GhNMNgL3ZUCGoyb0bdfdrIXI84bqWoTEyQ1JU7/iw=
+github.com/kilo666mj/oidcrp v0.2.0/go.mod h1:SOrzVbfoK5x7pPRAIo8F/EPVkIP8qcPD87SCBpEEBDM=
 github.com/miekg/dns v1.1.31/go.mod h1:KNUDUusw/aVsxyTYZM1oqvCicbwhgbNgztCETuNZ7xM=
 github.com/miekg/dns v1.1.72 h1:vhmr+TF2A3tuoGNkLDFK9zi36F2LS+hKTRW0Uf8kbzI=
 github.com/miekg/dns v1.1.72/go.mod h1:+EuEPhdHOsfk6Wk5TT2CzssZdqkmFhf8r+aVyDEToIs=
