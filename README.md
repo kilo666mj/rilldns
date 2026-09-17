@@ -75,6 +75,7 @@ LAN clients ──────────────── DNS VIP ───�
 
 See [production deployment](docs/deployment.md), the
 [API reference](docs/api.md), [high availability](docs/ha.md),
+[operations and recovery](docs/operations.md),
 [MCP setup](docs/mcp.md), and
 [web UI configuration](docs/ui.md). Files under `deploy/` are sanitized
 examples and must be adapted to your addresses, zones, firewall, and identity
