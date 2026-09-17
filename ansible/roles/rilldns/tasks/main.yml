@@ -39,6 +39,13 @@
       - rilldns_query_analytics_recent_queries | int <= 10000
     fail_msg: Review the bounded query analytics mode and counter limits.
 
+- name: Validate additional dnstap endpoints
+  ansible.builtin.assert:
+    that:
+      - item is match('^tcp://[^ ]+:[0-9]{1,5}$')
+    fail_msg: "Additional dnstap endpoints must use tcp://host:port syntax."
+  loop: "{{ rilldns_additional_dnstap_endpoints }}"
+
 - name: Map host architecture to release architecture
   ansible.builtin.set_fact:
     rilldns_release_arch: "{{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[ansible_architecture] | default('unsupported') }}"
