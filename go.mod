@@ -8,7 +8,7 @@ require (
 	github.com/kilo666mj/oidcrp v0.2.0
 	github.com/miekg/dns v1.1.73
 	github.com/modelcontextprotocol/go-sdk v1.8.0
-	google.golang.org/protobuf v1.33.0
+	google.golang.org/protobuf v1.36.12
 )
 
 require (
