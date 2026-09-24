@@ -5,14 +5,14 @@ go 1.27.1
 require (
 	github.com/dnstap/golang-dnstap v0.4.0
 	github.com/kilo666mj/mcpkit v0.1.0
-	github.com/kilo666mj/oidcrp v0.1.0
+	github.com/kilo666mj/oidcrp v0.2.0
 	github.com/miekg/dns v1.1.72
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	google.golang.org/protobuf v1.33.0
 )
 
 require (
-	github.com/coreos/go-oidc/v3 v3.19.0 // indirect
+	github.com/coreos/go-oidc/v3 v3.21.0 // indirect
 	github.com/farsightsec/golang-framestream v0.3.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/google/jsonschema-go v0.4.3 // indirect
