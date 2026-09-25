@@ -22,8 +22,8 @@ github.com/google/jsonschema-go v0.4.3 h1:/DBOLZTfDow7pe2GmaJNhltueGTtDKICi8V8p+
 github.com/google/jsonschema-go v0.4.3/go.mod h1:r5quNTdLOYEz95Ru18zA0ydNbBuYoo9tgaYcxEYhJVE=
 github.com/kilo666mj/mcpkit v0.1.0 h1:+dxBnxrhBzyKPdGseviVHu30obXJbq9YZKTfCER9odE=
 github.com/kilo666mj/mcpkit v0.1.0/go.mod h1:K90JuDJZ7QV7LKGwagxr4PWLa5Wf86m+CCTs7ZMK5qA=
-github.com/kilo666mj/oidcrp v0.2.0 h1:P8GhNMNgL3ZUCGoyb0bdfdrIXI84bqWoTEyQ1JU7/iw=
-github.com/kilo666mj/oidcrp v0.2.0/go.mod h1:SOrzVbfoK5x7pPRAIo8F/EPVkIP8qcPD87SCBpEEBDM=
+github.com/kilo666mj/oidcrp v0.2.1 h1:BgeO2XdyJ9Oi3NtYSnA0vErMKu/PYKA/H8YCuzcBA0U=
+github.com/kilo666mj/oidcrp v0.2.1/go.mod h1:SOrzVbfoK5x7pPRAIo8F/EPVkIP8qcPD87SCBpEEBDM=
 github.com/miekg/dns v1.1.31/go.mod h1:KNUDUusw/aVsxyTYZM1oqvCicbwhgbNgztCETuNZ7xM=
 github.com/miekg/dns v1.1.73 h1:uhT8nJxmTrPJYClxVxTCX+CVn6qnzSiybRk72Z6DgrE=
 github.com/miekg/dns v1.1.73/go.mod h1:RW2Obtfd5NZHvOFe3zYG0W8koWOQtAzyHaLo8vASBuQ=
