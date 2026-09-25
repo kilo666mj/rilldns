@@ -5,7 +5,7 @@ go 1.27.1
 require (
 	github.com/dnstap/golang-dnstap v0.4.0
 	github.com/kilo666mj/mcpkit v0.1.0
-	github.com/kilo666mj/oidcrp v0.2.0
+	github.com/kilo666mj/oidcrp v0.2.1
 	github.com/miekg/dns v1.1.73
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	google.golang.org/protobuf v1.36.12
