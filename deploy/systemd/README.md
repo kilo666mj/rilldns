@@ -120,6 +120,10 @@ request when the serial changes. CoreDNS auto has no usable IXFR journal, and
 its fallback can distort TTLs through the cache minimum. The daemon validates
 and atomically publishes the fresh snapshot under
 `/var/lib/rilldns/zones`.
+Set the secondary service's `-zones` argument to the deployment’s authoritative
+zone names (comma-separated). Keep `-discover-zones` enabled so existing zone
+files and newly notified zones join the refresh loop.
+
 An hourly SOA poll covers lost NOTIFY messages. Failed transfers leave the last
 good snapshot untouched. Newly notified zones are discovered automatically;
 authoritative deletion probes remove retired replicas.
