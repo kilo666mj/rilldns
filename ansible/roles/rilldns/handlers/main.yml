@@ -11,3 +11,10 @@
     - rilldns-telemetry.service
     - rilldns.service
     - rilldns-api.service
+
+- name: Restart secondary replication
+  ansible.builtin.systemd_service:
+    name: rilldns-secondary.service
+    state: restarted
+  listen: Restart rilldns stack
+  when: rilldns_role == 'secondary'
