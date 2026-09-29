@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kilo666mj/mcpkit"
 	"github.com/kilo666mj/rilldns/internal/blocking"
 	"github.com/kilo666mj/rilldns/internal/cloudflare"
 	"github.com/kilo666mj/rilldns/internal/controlclient"
@@ -17,6 +16,7 @@ import (
 	"github.com/kilo666mj/rilldns/internal/zones"
 	"github.com/miekg/dns"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"go.michaelspost.com/mcpkit"
 )
 
 // Hosted exposes the same API-backed tool catalogue over authenticated,
