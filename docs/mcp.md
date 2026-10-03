@@ -19,6 +19,8 @@ MCP client -> rill-mcp -> rill-api -> validate/history/publish/verify/audit -> C
 - `dns_list_records`: list every RRset in a zone.
 - `dns_plan_changes`: validate and preview an atomic batch without publishing it.
 - `dns_apply_changes`: publish a batch only with the current revision and `confirm: true`.
+- `dns_list_revisions`: list prior zone versions retained in history and the current revision.
+- `dns_rollback_zone`: preview (`confirm: false`) or publish (`confirm: true`) the records of a history revision with a new SOA serial; requires the current revision.
 - `dns_create_zone`: validate or publish complete zone text with an explicit role; publication requires `confirm: true`.
 - `dns_delete_zone`: validate or delete a zone with its exact revision; deletion requires `confirm: true`.
 - `dns_test_resolution`: send a read-only query to the local RillDNS listener.

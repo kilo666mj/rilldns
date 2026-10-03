@@ -119,3 +119,31 @@ func currentETag(t *testing.T, handler http.Handler) string {
 	}
 	return response.Header().Get("ETag")
 }
+
+func TestIdempotencyKeyReplaysRollback(t *testing.T) {
+	handler := testHandler(t)
+	original := currentETag(t, handler)
+	change := httptest.NewRequest(http.MethodPost, "/v1/zones/example.test/changes", strings.NewReader(`{"changes":[{"action":"delete","name":"www","type":"A"}]}`))
+	change.Header.Set("If-Match", original)
+	changed := httptest.NewRecorder()
+	handler.ServeHTTP(changed, change)
+	if changed.Code != http.StatusOK {
+		t.Fatalf("change status %d: %s", changed.Code, changed.Body.String())
+	}
+	body := `{"target_revision":"` + strings.Trim(original, `"`) + `"}`
+	rollback := func() *httptest.ResponseRecorder {
+		request := httptest.NewRequest(http.MethodPost, "/v1/zones/example.test/rollback", strings.NewReader(body))
+		request.Header.Set("If-Match", changed.Header().Get("ETag"))
+		request.Header.Set("Idempotency-Key", "rollback-1")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		return response
+	}
+	first, retry := rollback(), rollback()
+	if first.Code != http.StatusOK || retry.Code != http.StatusOK || retry.Header().Get("Idempotent-Replayed") != "true" || retry.Body.String() != first.Body.String() {
+		t.Fatalf("first %d, retry %d replayed=%q: %s", first.Code, retry.Code, retry.Header().Get("Idempotent-Replayed"), retry.Body.String())
+	}
+	if current := currentETag(t, handler); current != first.Header().Get("ETag") {
+		t.Fatalf("zone revision %s, want %s", current, first.Header().Get("ETag"))
+	}
+}

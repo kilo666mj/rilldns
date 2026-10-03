@@ -33,6 +33,11 @@ type Config struct {
 	Now           func() time.Time
 	DiscoverZones bool
 	MaxZones      int
+	// RetryMin and RetryMax bound the exponential backoff used to retry a
+	// zone whose refresh failed, so a transient error is not left in place
+	// until the next Refresh tick.
+	RetryMin time.Duration
+	RetryMax time.Duration
 }
 
 type Status struct {
@@ -59,6 +64,8 @@ type Service struct {
 	status     Status
 	metadata   map[string]ZoneStatus
 	zoneErrors map[string]string
+	failures   map[string]int
+	retries    map[string]*time.Timer
 	zonesMu    sync.RWMutex
 }
 
@@ -81,6 +88,14 @@ func New(config Config) (*Service, error) {
 	if config.MaxZones <= 0 {
 		config.MaxZones = 1000
 	}
+	if config.RetryMin <= 0 {
+		config.RetryMin = 30 * time.Second
+	}
+	if config.RetryMax <= 0 {
+		config.RetryMax = 15 * time.Minute
+	}
+	config.RetryMax = min(config.RetryMax, config.Refresh)
+	config.RetryMin = min(config.RetryMin, config.RetryMax)
 	if len(config.Zones) > config.MaxZones {
 		return nil, fmt.Errorf("configured zones exceed maximum of %d", config.MaxZones)
 	}
@@ -106,6 +121,8 @@ func New(config Config) (*Service, error) {
 		status:     Status{Kind: "zones", Source: config.Primary, Zones: []ZoneStatus{}},
 		metadata:   map[string]ZoneStatus{},
 		zoneErrors: map[string]string{},
+		failures:   map[string]int{},
+		retries:    map[string]*time.Timer{},
 	}, nil
 }
 
@@ -121,6 +138,8 @@ func (s *Service) Run(ctx context.Context) (err error) {
 			return err
 		}
 	}
+	s.restoreStatus()
+	defer s.stopRetries()
 	tsigSecrets := map[string]string{s.config.TSIGName: s.config.TSIGSecret}
 	serverUDP := &dns.Server{Addr: s.config.Listen, Net: "udp", Handler: dns.HandlerFunc(s.handleNotify), TsigSecret: tsigSecrets}
 	serverTCP := &dns.Server{Addr: s.config.Listen, Net: "tcp", Handler: dns.HandlerFunc(s.handleNotify), TsigSecret: tsigSecrets}
@@ -286,6 +305,7 @@ func (s *Service) syncZone(zone string) {
 	} else {
 		s.zoneErrors[zone] = err.Error()
 	}
+	s.scheduleRetry(zone, err != nil)
 	s.status.Success = len(s.zoneErrors) == 0
 	s.status.Error = joinedErrors(s.zoneErrors)
 	if s.status.Success {
@@ -294,6 +314,60 @@ func (s *Service) syncZone(zone string) {
 	if statusErr := writeJSONAtomic(s.config.StatusFile, s.status); statusErr != nil {
 		fmt.Fprintf(os.Stderr, "write secondary status: %v\n", statusErr)
 	}
+}
+
+// restoreStatus seeds the in-memory status from the previous run so that a
+// restart does not reset last_success to the zero time, and so that zones
+// already on disk are reported before their first refresh completes.
+func (s *Service) restoreStatus() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if content, err := os.ReadFile(s.config.StatusFile); err == nil {
+		var previous Status
+		if json.Unmarshal(content, &previous) == nil && previous.Kind == s.status.Kind && previous.Source == s.status.Source {
+			s.status.LastSuccess = previous.LastSuccess
+		}
+	}
+	for _, zone := range s.zones() {
+		metadata, _, err := inspectZone(filepath.Join(s.config.OutputDir, zoneFileName(zone)), zone)
+		if err == nil {
+			s.metadata[zone] = metadata
+		}
+	}
+	s.status.Zones = sortedMetadata(s.metadata)
+	s.status.EarliestRRSIGExpiry = earliestExpiry(s.config.OutputDir, s.zones())
+}
+
+// scheduleRetry must be called with s.mu held.
+func (s *Service) scheduleRetry(zone string, failed bool) {
+	if timer, ok := s.retries[zone]; ok {
+		timer.Stop()
+		delete(s.retries, zone)
+	}
+	if !failed {
+		delete(s.failures, zone)
+		return
+	}
+	s.failures[zone]++
+	s.retries[zone] = time.AfterFunc(retryDelay(s.failures[zone], s.config.RetryMin, s.config.RetryMax), func() { s.queue(zone) })
+}
+
+func (s *Service) stopRetries() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for zone, timer := range s.retries {
+		timer.Stop()
+		delete(s.retries, zone)
+	}
+}
+
+// retryDelay doubles from minimum for each consecutive failure, capped at maximum.
+func retryDelay(failures int, minimum, maximum time.Duration) time.Duration {
+	delay := minimum
+	for attempt := 1; attempt < failures && delay < maximum; attempt++ {
+		delay *= 2
+	}
+	return min(delay, maximum)
 }
 
 func (s *Service) remoteSerial(zone string) (uint32, error) {
