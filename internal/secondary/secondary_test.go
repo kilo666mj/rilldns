@@ -87,6 +87,97 @@ func TestJoinedErrorsIsStableAndDoesNotHideFailures(t *testing.T) {
 	}
 }
 
+func TestRetryDelayBacksOffToMaximum(t *testing.T) {
+	cases := map[int]time.Duration{1: 30 * time.Second, 2: time.Minute, 3: 2 * time.Minute, 6: 15 * time.Minute, 50: 15 * time.Minute}
+	for failures, want := range cases {
+		if got := retryDelay(failures, 30*time.Second, 15*time.Minute); got != want {
+			t.Errorf("retryDelay(%d) = %s, want %s", failures, got, want)
+		}
+	}
+}
+
+func TestNewCapsRetryAtRefresh(t *testing.T) {
+	config := testConfig(t)
+	config.Refresh = 5 * time.Minute
+	service, err := New(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if service.config.RetryMin != 30*time.Second || service.config.RetryMax != 5*time.Minute {
+		t.Fatalf("retry bounds = %s..%s", service.config.RetryMin, service.config.RetryMax)
+	}
+}
+
+func TestFailedRefreshIsRetriedBeforeNextTick(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	unreachable := listener.Addr().String()
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	config := testConfig(t)
+	config.Primary = unreachable
+	config.RetryMin = 10 * time.Millisecond
+	service, err := New(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.stopRetries()
+	service.syncZone("example.")
+	if service.status.Success || service.failures["example."] != 1 {
+		t.Fatalf("failure was not recorded: %#v", service.status)
+	}
+	select {
+	case zone := <-service.trigger:
+		if zone != "example." {
+			t.Fatalf("retried %q", zone)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("failed zone was not queued for retry")
+	}
+}
+
+func TestRestoreStatusKeepsLastSuccessAndDiskMetadata(t *testing.T) {
+	config := testConfig(t)
+	lastSuccess := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	previous := Status{Kind: "zones", Source: config.Primary, Success: false, LastSuccess: lastSuccess}
+	if err := writeJSONAtomic(config.StatusFile, previous); err != nil {
+		t.Fatal(err)
+	}
+	service, err := New(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.publish("example.", testSnapshot(t, 7)); err != nil {
+		t.Fatal(err)
+	}
+	service.restoreStatus()
+	if !service.status.LastSuccess.Equal(lastSuccess) {
+		t.Fatalf("last success = %s", service.status.LastSuccess)
+	}
+	if len(service.status.Zones) != 1 || service.status.Zones[0].Serial != 7 {
+		t.Fatalf("zones = %#v", service.status.Zones)
+	}
+}
+
+func TestRestoreStatusIgnoresOtherSource(t *testing.T) {
+	config := testConfig(t)
+	previous := Status{Kind: "zones", Source: "198.51.100.1:53", LastSuccess: time.Now()}
+	if err := writeJSONAtomic(config.StatusFile, previous); err != nil {
+		t.Fatal(err)
+	}
+	service, err := New(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.restoreStatus()
+	if !service.status.LastSuccess.IsZero() {
+		t.Fatalf("last success from another primary was restored: %s", service.status.LastSuccess)
+	}
+}
+
 func testConfig(t *testing.T) Config {
 	t.Helper()
 	directory := t.TempDir()
