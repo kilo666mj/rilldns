@@ -85,6 +85,25 @@ func TestApplyRequiresConfirmationWithoutCallingAPI(t *testing.T) {
 	}
 }
 
+func TestRefreshBlocklistsTool(t *testing.T) {
+	var gotMethod, gotPath, gotActor string
+	session, cleanup := connectTestMCP(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		gotMethod, gotPath, gotActor = request.Method, request.URL.Path, request.Header.Get("X-RillDNS-Actor")
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusAccepted)
+		_, _ = writer.Write([]byte(`{"requested_at":"2026-10-03T12:00:00Z","actor":"mcp:blocklist-refresh","request_id":"r"}`))
+	}))
+	defer cleanup()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "dns_refresh_blocklists", Arguments: map[string]any{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError || gotMethod != http.MethodPost || gotPath != "/v1/blocklists/refresh" || gotActor != "mcp:blocklist-refresh" {
+		t.Fatalf("error=%v %s %s actor=%q", result.IsError, gotMethod, gotPath, gotActor)
+	}
+}
+
 func TestRollbackToolPreviewsUnlessConfirmed(t *testing.T) {
 	var gotPath, gotBody string
 	session, cleanup := connectTestMCP(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {

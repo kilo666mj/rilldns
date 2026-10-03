@@ -32,6 +32,7 @@ func main() {
 	notifyTSIGSecretFile := flag.String("notify-tsig-secret-file", os.Getenv("RILLDNS_NOTIFY_TSIG_SECRET_FILE"), "file containing the base64 TSIG secret used for NOTIFY")
 	readOnly := flag.Bool("read-only", false, "reject all zone mutations")
 	statusDir := flag.String("status-dir", "/var/lib/rilldns/status", "refresh status directory")
+	idempotencyFile := flag.String("idempotency-file", "/var/lib/rilldns/idempotency.json", "file retaining Idempotency-Key responses for 24 hours; empty keeps them in memory only")
 	metricsListen := flag.String("metrics-listen", "", "optional read-only metrics listen address")
 	prometheusURL := flag.String("prometheus-url", envOr("RILLDNS_PROMETHEUS_URL", "http://192.0.2.20:9090"), "Prometheus URL used for fixed UI history queries")
 	coreDNSMetricsURL := flag.String("coredns-metrics-url", envOr("RILLDNS_COREDNS_METRICS_URL", "http://127.0.0.1:19153/metrics"), "local CoreDNS metrics URL to re-export")
@@ -66,6 +67,12 @@ func main() {
 	verifier := zones.DNSVerifier{Address: *dnsAddress, NotifyAddress: *notifyAddress, Interval: 200 * time.Millisecond, TSIGName: *notifyTSIGName, TSIGSecret: notifySecret}
 	store := zones.NewStore(*zoneDir, *auditPath, verifier)
 	apiServer := api.NewWithStatus(store, logger, *readOnly, *statusDir)
+	idempotency, err := api.NewIdempotencyStore(*idempotencyFile)
+	if err != nil {
+		logger.Error("load idempotency store", "error", err)
+		os.Exit(1)
+	}
+	apiServer.SetIdempotencyStore(idempotency)
 	apiServer.SetAuditPath(*auditPath)
 	apiServer.SetHA(*haNode, *haRole, *haPeerName, *haPeerHealthURL, *haPeerStatusURL, *haVIP)
 	cloudflareConfigPath := filepath.Join(filepath.Dir(*statusDir), "cloudflare-zones.json")

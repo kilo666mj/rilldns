@@ -47,6 +47,7 @@ type Server struct {
 	haPeerHealthURL       string
 	haPeerStatusURL       string
 	haVIP                 string
+	idempotency           *IdempotencyStore
 	auditPath             string
 }
 
@@ -61,8 +62,13 @@ func New(store *zones.Store, logger *slog.Logger, readOnly bool) *Server {
 }
 
 func NewWithStatus(store *zones.Store, logger *slog.Logger, readOnly bool, statusDir string) *Server {
-	return &Server{store: store, blocking: blocking.NewStore("/var/lib/rilldns/blocking"), logger: logger, readOnly: readOnly, statusDir: statusDir}
+	idempotency, _ := NewIdempotencyStore("") // an in-memory store cannot fail
+	return &Server{store: store, blocking: blocking.NewStore("/var/lib/rilldns/blocking"), logger: logger, readOnly: readOnly, statusDir: statusDir, idempotency: idempotency}
 }
+
+// SetIdempotencyStore replaces the default in-memory Idempotency-Key store,
+// typically with one persisted to disk.
+func (s *Server) SetIdempotencyStore(store *IdempotencyStore) { s.idempotency = store }
 
 func (s *Server) SetBlockingStore(store *blocking.Store) { s.blocking = store }
 func (s *Server) SetCloudflare(reader CloudflareReader, zoneNames []string) {
@@ -98,23 +104,24 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/audit", s.listAudit)
 	mux.HandleFunc("GET /v1/providers/cloudflare/zones", s.listCloudflareZones)
 	mux.HandleFunc("GET /v1/providers/cloudflare/config", s.getCloudflareConfig)
-	mux.HandleFunc("PUT /v1/providers/cloudflare/config", s.updateCloudflareConfig)
+	mux.HandleFunc("PUT /v1/providers/cloudflare/config", s.idempotent(s.updateCloudflareConfig))
 	mux.HandleFunc("GET /v1/providers/cloudflare/zones/{zone}/records", s.getCloudflareRecords)
 	mux.HandleFunc("POST /v1/providers/cloudflare/zones/{zone}/plans", s.planCloudflareChanges)
-	mux.HandleFunc("POST /v1/providers/cloudflare/zones/{zone}/changes", s.applyCloudflareChanges)
-	mux.HandleFunc("PUT /v1/zones/{zone}", s.createZone)
-	mux.HandleFunc("DELETE /v1/zones/{zone}", s.deleteZone)
+	mux.HandleFunc("POST /v1/providers/cloudflare/zones/{zone}/changes", s.idempotent(s.applyCloudflareChanges))
+	mux.HandleFunc("PUT /v1/zones/{zone}", s.idempotent(s.createZone))
+	mux.HandleFunc("DELETE /v1/zones/{zone}", s.idempotent(s.deleteZone))
 	mux.HandleFunc("GET /v1/status/refresh", s.refreshStatus)
 	mux.HandleFunc("GET /v1/status/ha", s.haStatus)
 	mux.HandleFunc("GET /v1/metrics/history", s.metricsHistory)
 	mux.HandleFunc("GET /v1/query-analytics", s.queryAnalytics)
 	mux.HandleFunc("GET /v1/blocklists/config", s.getBlocklistConfig)
-	mux.HandleFunc("PUT /v1/blocklists/config", s.updateBlocklistConfig)
+	mux.HandleFunc("PUT /v1/blocklists/config", s.idempotent(s.updateBlocklistConfig))
+	mux.HandleFunc("POST /v1/blocklists/refresh", s.refreshBlocklists)
 	mux.HandleFunc("GET /metrics", s.metrics)
 	mux.HandleFunc("GET /v1/zones/{zone}/rrsets", s.getZone)
-	mux.HandleFunc("POST /v1/zones/{zone}/changes", s.changeZone)
+	mux.HandleFunc("POST /v1/zones/{zone}/changes", s.idempotent(s.changeZone))
 	mux.HandleFunc("GET /v1/zones/{zone}/revisions", s.listRevisions)
-	mux.HandleFunc("POST /v1/zones/{zone}/rollback", s.rollbackZone)
+	mux.HandleFunc("POST /v1/zones/{zone}/rollback", s.idempotent(s.rollbackZone))
 	return s.requestLog(mux)
 }
 
@@ -361,6 +368,20 @@ func (s *Server) updateBlocklistConfig(writer http.ResponseWriter, request *http
 	}
 	writer.Header().Set("ETag", quoteETag(result.Config.Revision))
 	writeJSON(writer, http.StatusOK, result)
+}
+
+// refreshBlocklists asks this node to recompile its blocklists now. It is
+// permitted on read-only instances: it changes no configuration, and a
+// standby compiles from the configuration it already fetches.
+func (s *Server) refreshBlocklists(writer http.ResponseWriter, request *http.Request) {
+	actor, requestID := s.actorAndRequestID(request)
+	result, err := s.blocking.RequestRefresh(actor, requestID, time.Now())
+	if err != nil {
+		s.logger.Error("request blocklist refresh", "error", err)
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(writer, http.StatusAccepted, result)
 }
 
 func (s *Server) createZone(writer http.ResponseWriter, request *http.Request) {

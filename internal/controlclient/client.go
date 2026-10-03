@@ -43,6 +43,16 @@ func (c *Client) UpdateBlocklistConfig(ctx context.Context, request blocking.Upd
 	return response, nil
 }
 
+func (c *Client) RefreshBlocklists(ctx context.Context, actor string) (blocking.RefreshRequest, error) {
+	var response blocking.RefreshRequest
+	headers := make(http.Header)
+	headers.Set("X-RillDNS-Actor", actor)
+	if err := c.requestWithHeaders(ctx, http.MethodPost, "/v1/blocklists/refresh", struct{}{}, headers, &response); err != nil {
+		return blocking.RefreshRequest{}, err
+	}
+	return response, nil
+}
+
 // AuditQuery filters GET /v1/audit. Empty fields are not sent.
 type AuditQuery struct {
 	Zone     string
