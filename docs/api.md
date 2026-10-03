@@ -267,6 +267,22 @@ they survive API restarts. Server errors are not retained, so retrying after a
 `5xx` runs the request again; the revision check still prevents a change from
 being applied twice. Keys are not shared between nodes.
 
+## Audit log
+
+`GET /v1/audit` returns recent events from the append-only audit log
+(`rill-api -audit-log`, default `/var/lib/rilldns/audit.jsonl`), newest first:
+
+```sh
+curl -sS 'http://127.0.0.1:8053/v1/audit?zone=example.test&limit=20'
+```
+
+Optional filters are `zone` (case and trailing dot are ignored), `provider`
+(`rilldns` for native zones or `cloudflare`), and exact `actor`. `limit` is 1 to
+500 and defaults to 100. Events are returned exactly as recorded, so native and
+Cloudflare events carry different fields. Lines that are not valid JSON are
+counted in `skipped_lines` instead of failing the request. The log is scanned
+on each request; rotate it if it grows large.
+
 ## Change format
 
 Upsert replaces the complete RRset:

@@ -10,6 +10,7 @@ MCP client -> rill-mcp -> rill-api -> validate/history/publish/verify/audit -> C
 
 ## Tools
 
+- `dns_list_audit_events`: read recent published changes from the audit log, newest first, filtered by zone, provider, or actor.
 - `dns_list_zones`: list managed zones, serials, and revisions.
 - `dns_cloudflare_list_zones`: list explicitly configured external Cloudflare zones.
 - `dns_cloudflare_list_records`: list normalized records and the synthetic revision for one configured Cloudflare zone.

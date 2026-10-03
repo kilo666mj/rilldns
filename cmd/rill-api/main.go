@@ -73,6 +73,7 @@ func main() {
 		os.Exit(1)
 	}
 	apiServer.SetIdempotencyStore(idempotency)
+	apiServer.SetAuditPath(*auditPath)
 	apiServer.SetHA(*haNode, *haRole, *haPeerName, *haPeerHealthURL, *haPeerStatusURL, *haVIP)
 	cloudflareConfigPath := filepath.Join(filepath.Dir(*statusDir), "cloudflare-zones.json")
 	cloudflareConfig, err := cloudflare.LoadConfig(cloudflareConfigPath, canonicalNames(envCSVValue(*cloudflareZones)))
