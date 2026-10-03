@@ -275,3 +275,70 @@ func TestZoneLifecycleAPI(t *testing.T) {
 		t.Fatalf("delete status %d: %s", response.Code, response.Body.String())
 	}
 }
+
+func TestRevisionsAndRollbackAPI(t *testing.T) {
+	handler := testHandler(t)
+	call := func(method, path, ifMatch string, payload any) *httptest.ResponseRecorder {
+		t.Helper()
+		var body io.Reader
+		if payload != nil {
+			encoded, _ := json.Marshal(payload)
+			body = bytes.NewReader(encoded)
+		}
+		request := httptest.NewRequest(method, path, body)
+		if ifMatch != "" {
+			request.Header.Set("If-Match", ifMatch)
+		}
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		return response
+	}
+	original := call(http.MethodGet, "/v1/zones/example.test/rrsets", "", nil).Header().Get("ETag")
+	changed := call(http.MethodPost, "/v1/zones/example.test/changes", original, map[string]any{
+		"changes": []map[string]any{{"action": "upsert", "name": "www", "type": "A", "ttl": 60, "records": []string{"192.0.2.99"}}},
+	})
+	if changed.Code != http.StatusOK {
+		t.Fatalf("change status %d: %s", changed.Code, changed.Body.String())
+	}
+
+	listed := call(http.MethodGet, "/v1/zones/example.test/revisions", "", nil)
+	var revisions struct {
+		CurrentRevision string           `json:"current_revision"`
+		Revisions       []zones.Revision `json:"revisions"`
+	}
+	if err := json.Unmarshal(listed.Body.Bytes(), &revisions); err != nil {
+		t.Fatal(err)
+	}
+	if listed.Code != http.StatusOK || len(revisions.Revisions) != 1 || quoteETag(revisions.Revisions[0].Revision) != original {
+		t.Fatalf("revisions status %d: %s", listed.Code, listed.Body.String())
+	}
+	if quoteETag(revisions.CurrentRevision) != changed.Header().Get("ETag") {
+		t.Fatalf("current revision %q, want %s", revisions.CurrentRevision, changed.Header().Get("ETag"))
+	}
+
+	target := revisions.Revisions[0].Revision
+	stale := call(http.MethodPost, "/v1/zones/example.test/rollback", original, map[string]any{"target_revision": target})
+	if stale.Code != http.StatusPreconditionFailed {
+		t.Fatalf("stale rollback status %d: %s", stale.Code, stale.Body.String())
+	}
+	rolledBack := call(http.MethodPost, "/v1/zones/example.test/rollback", changed.Header().Get("ETag"), map[string]any{"target_revision": target})
+	if rolledBack.Code != http.StatusOK || !strings.Contains(rolledBack.Body.String(), `"published":true`) || !strings.Contains(rolledBack.Body.String(), `"rollback_to":"`+target+`"`) {
+		t.Fatalf("rollback status %d: %s", rolledBack.Code, rolledBack.Body.String())
+	}
+	current := call(http.MethodGet, "/v1/zones/example.test/rrsets", "", nil)
+	if strings.Contains(current.Body.String(), "192.0.2.99") {
+		t.Fatalf("rolled-back record still present: %s", current.Body.String())
+	}
+}
+
+func TestRollbackRejectedWhenReadOnly(t *testing.T) {
+	directory := t.TempDir()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	handler := New(zones.NewStore(directory, "", nil), logger, true).Handler()
+	request := httptest.NewRequest(http.MethodPost, "/v1/zones/example.test/rollback", strings.NewReader(`{}`))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status %d: %s", response.Code, response.Body.String())
+	}
+}

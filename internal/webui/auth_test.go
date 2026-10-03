@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kilo666mj/oidcrp"
+	"go.michaelspost.com/oidcrp"
 )
 
 func testOIDCConfig() OIDCConfig {
