@@ -109,8 +109,22 @@ curl -sS -X PUT -H "If-Match: \"$revision\"" \
 
 Only HTTPS sources are accepted. Inputs are normalized, deduplicated, sorted,
 and limited to 32 sources. `dry_run: false` atomically publishes the three
-configuration files. The next scheduled refresh compiles them; operators can
-start `rilldns-refresh-blocklists.service` for immediate application.
+configuration files. The next scheduled refresh compiles them, or request an
+immediate refresh:
+
+```sh
+curl -sS -X POST -H 'X-RillDNS-Actor: operator' \
+  http://127.0.0.1:8053/v1/blocklists/refresh
+```
+
+The API answers `202 Accepted` with the recorded request once it has written
+`/var/lib/rilldns/blocking/refresh.request`. `rilldns-refresh-blocklists.path`
+watches that file and starts `rilldns-refresh-blocklists.service`, so the API
+needs no permission to control systemd. The request returns before the refresh
+finishes; check `GET /v1/status/refresh` for the outcome. Each node refreshes
+only itself, and the request is accepted on read-only standby instances because
+it changes no configuration. The web console requests a refresh automatically
+after publishing a configuration.
 
 ## Read zones
 
@@ -282,7 +296,5 @@ SOA records cannot be changed directly. CNAME coexistence, apex SOA/NS requireme
 ## Current limitations
 
 - Loopback access only; remote OAuth and role-based authorization come later.
-- Blocklist configuration publication and blocklist compilation are separate;
-  there is not yet an API endpoint to trigger the refresh job.
 - Zones with the `secondary` role reject RRset mutations; lifecycle deletion
   still requires an exact revision.

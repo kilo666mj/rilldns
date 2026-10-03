@@ -150,6 +150,14 @@ optimistic concurrency. Before its daily compile, `dns-secondary` synchronizes t
 files through the primary's read-only TCP `18053` endpoint; firewalld permits
 that endpoint only from `dns-secondary` and `prometheus.example.net`.
 
+`rilldns-refresh-blocklists.path` starts the same service on demand whenever
+the API writes `/var/lib/rilldns/blocking/refresh.request` in response to
+`POST /v1/blocklists/refresh`. Enable it on both nodes:
+
+```sh
+systemctl enable --now rilldns-refresh-blocklists.path
+```
+
 Inspect the jobs with:
 
 ```sh

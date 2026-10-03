@@ -25,6 +25,7 @@ MCP client -> rill-mcp -> rill-api -> validate/history/publish/verify/audit -> C
 - `dns_delete_zone`: validate or delete a zone with its exact revision; deletion requires `confirm: true`.
 - `dns_test_resolution`: send a read-only query to the local RillDNS listener.
 - `dns_get_blocklist_config`: read sources, allow/deny domains, and revision.
+- `dns_refresh_blocklists`: request an immediate blocklist download and compile on this node; check `dns_refresh_status` for the result.
 - `dns_update_blocklist_config`: validate or replace the complete configuration; publication requires the exact revision and `confirm: true`.
 
 The apply tool is marked destructive in MCP metadata. Server-side safety does not depend on the MCP host honoring that hint: confirmation, revision checks, validation, limits, audit, publication verification, and rollback are enforced by RillDNS.
