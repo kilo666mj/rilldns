@@ -240,6 +240,33 @@ the serial differs, the resulting revision is new rather than equal to the
 target revision. History files whose content no longer matches their revision
 are refused.
 
+## Retrying mutations safely
+
+Every mutating endpoint (zone changes, rollback, zone create and delete,
+blocklist configuration, and Cloudflare configuration and changes) accepts an
+`Idempotency-Key` header of 1 to 255 visible ASCII characters. Use a new random
+key for each intended mutation and reuse it only when retrying that same
+request, for example after a timeout:
+
+```sh
+curl -sS -X POST \
+  -H "If-Match: \"$revision\"" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H 'Content-Type: application/json' \
+  http://127.0.0.1:8053/v1/zones/example.test/changes \
+  -d '{"changes":[{"action":"delete","name":"old","type":"A"}]}'
+```
+
+A retry whose method, path, `If-Match`, and body match the original receives
+the original status, body, and `ETag` with `Idempotent-Replayed: true`, and the
+mutation is not repeated. Reusing a key for a different request returns `422`,
+and a retry that arrives while the original is still running returns `409`.
+Responses are retained for 24 hours (at most 1,000 keys) in
+`/var/lib/rilldns/idempotency.json`, set by `rill-api -idempotency-file`, so
+they survive API restarts. Server errors are not retained, so retrying after a
+`5xx` runs the request again; the revision check still prevents a change from
+being applied twice. Keys are not shared between nodes.
+
 ## Change format
 
 Upsert replaces the complete RRset:
@@ -269,6 +296,5 @@ SOA records cannot be changed directly. CNAME coexistence, apex SOA/NS requireme
 ## Current limitations
 
 - Loopback access only; remote OAuth and role-based authorization come later.
-- No idempotency-key store yet.
 - Zones with the `secondary` role reject RRset mutations; lifecycle deletion
   still requires an exact revision.
