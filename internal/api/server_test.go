@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kilo666mj/rilldns/internal/blocking"
 	"github.com/kilo666mj/rilldns/internal/cloudflare"
 	"github.com/kilo666mj/rilldns/internal/zones"
 )
@@ -273,5 +274,27 @@ func TestZoneLifecycleAPI(t *testing.T) {
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"published":true`) {
 		t.Fatalf("delete status %d: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestBlocklistRefreshRecordsRequestEvenWhenReadOnly(t *testing.T) {
+	blockingDirectory := t.TempDir()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	server := New(zones.NewStore(t.TempDir(), "", nil), logger, true)
+	server.SetBlockingStore(blocking.NewStore(blockingDirectory))
+	request := httptest.NewRequest(http.MethodPost, "/v1/blocklists/refresh", nil)
+	request.Header.Set("X-RillDNS-Actor", "operator")
+	request.Header.Set("X-Request-ID", "req-refresh")
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("status %d: %s", response.Code, response.Body.String())
+	}
+	content, err := os.ReadFile(filepath.Join(blockingDirectory, blocking.RefreshRequestFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(content), `"actor":"operator"`) || !strings.Contains(string(content), `"request_id":"req-refresh"`) {
+		t.Fatalf("request file = %s", content)
 	}
 }
