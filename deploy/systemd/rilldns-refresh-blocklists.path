@@ -1,0 +1,9 @@
+[Unit]
+Description=Watch for on-demand RillDNS blocklist refresh requests
+
+[Path]
+PathChanged=/var/lib/rilldns/blocking/refresh.request
+Unit=rilldns-refresh-blocklists.service
+
+[Install]
+WantedBy=multi-user.target

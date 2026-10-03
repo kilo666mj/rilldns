@@ -241,6 +241,7 @@
     - rilldns-primary-status.timer
     - rilldns-refresh-blocklists.service
     - rilldns-refresh-blocklists.timer
+    - rilldns-refresh-blocklists.path
     - rilldns-diff.timer
   notify:
     - Reload systemd
@@ -296,6 +297,7 @@
     - rilldns-api.service
     - rilldns-diff.timer
     - rilldns-refresh-blocklists.timer
+    - rilldns-refresh-blocklists.path
 
 - name: Enable node-role service
   ansible.builtin.systemd_service:

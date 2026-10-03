@@ -108,6 +108,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/query-analytics", s.queryAnalytics)
 	mux.HandleFunc("GET /v1/blocklists/config", s.getBlocklistConfig)
 	mux.HandleFunc("PUT /v1/blocklists/config", s.updateBlocklistConfig)
+	mux.HandleFunc("POST /v1/blocklists/refresh", s.refreshBlocklists)
 	mux.HandleFunc("GET /metrics", s.metrics)
 	mux.HandleFunc("GET /v1/zones/{zone}/rrsets", s.getZone)
 	mux.HandleFunc("POST /v1/zones/{zone}/changes", s.changeZone)
@@ -359,6 +360,20 @@ func (s *Server) updateBlocklistConfig(writer http.ResponseWriter, request *http
 	}
 	writer.Header().Set("ETag", quoteETag(result.Config.Revision))
 	writeJSON(writer, http.StatusOK, result)
+}
+
+// refreshBlocklists asks this node to recompile its blocklists now. It is
+// permitted on read-only instances: it changes no configuration, and a
+// standby compiles from the configuration it already fetches.
+func (s *Server) refreshBlocklists(writer http.ResponseWriter, request *http.Request) {
+	actor, requestID := s.actorAndRequestID(request)
+	result, err := s.blocking.RequestRefresh(actor, requestID, time.Now())
+	if err != nil {
+		s.logger.Error("request blocklist refresh", "error", err)
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(writer, http.StatusAccepted, result)
 }
 
 func (s *Server) createZone(writer http.ResponseWriter, request *http.Request) {

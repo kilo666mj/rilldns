@@ -64,6 +64,10 @@ type BlocklistUpdateOutput struct {
 	Result blocking.UpdateResult `json:"result"`
 }
 
+type BlocklistRefreshOutput struct {
+	Request blocking.RefreshRequest `json:"request"`
+}
+
 type ListZonesOutput struct {
 	Zones []zones.Zone `json:"zones"`
 }
@@ -179,6 +183,12 @@ func New(api *controlclient.Client, dnsAddress string) *mcp.Server {
 		Description: "Replace blocklist sources and allow/deny domains. Requires the current revision; confirm=false validates a dry run.",
 		Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive, IdempotentHint: false, OpenWorldHint: &closedWorld},
 	}, service.updateBlocklistConfig)
+	idempotent := true
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "dns_refresh_blocklists", Title: "Refresh DNS blocklists now",
+		Description: "Ask the node to download and recompile its blocklists immediately instead of waiting for the daily timer. Returns once the request is recorded; check dns_refresh_status for the outcome.",
+		Annotations: &mcp.ToolAnnotations{DestructiveHint: new(bool), IdempotentHint: idempotent, OpenWorldHint: &closedWorld},
+	}, service.refreshBlocklists)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "dns_create_zone",
 		Title:       "Create or import DNS zone",
@@ -276,6 +286,11 @@ func (s *Server) updateBlocklistConfig(ctx context.Context, _ *mcp.CallToolReque
 		ExpectedRevision: input.ExpectedRevision, DryRun: !input.Confirm,
 	}, "mcp:blocklist-config")
 	return nil, BlocklistUpdateOutput{Result: result}, err
+}
+
+func (s *Server) refreshBlocklists(ctx context.Context, _ *mcp.CallToolRequest, _ EmptyInput) (*mcp.CallToolResult, BlocklistRefreshOutput, error) {
+	result, err := s.api.RefreshBlocklists(ctx, "mcp:blocklist-refresh")
+	return nil, BlocklistRefreshOutput{Request: result}, err
 }
 
 func (s *Server) createZone(ctx context.Context, _ *mcp.CallToolRequest, input CreateZoneInput) (*mcp.CallToolResult, LifecycleOutput, error) {
