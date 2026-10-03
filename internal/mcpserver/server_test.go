@@ -83,3 +83,23 @@ func TestApplyRequiresConfirmationWithoutCallingAPI(t *testing.T) {
 		t.Fatalf("result error=%v, API called=%v", result.IsError, called)
 	}
 }
+
+func TestListAuditEventsTool(t *testing.T) {
+	var gotQuery string
+	session, cleanup := connectTestMCP(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		gotQuery = request.URL.RawQuery
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"events":[{"request_id":"1","zone":"example.test.","changes":[{"action":"delete"}]}],"skipped_lines":0}`))
+	}))
+	defer cleanup()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "dns_list_audit_events", Arguments: map[string]any{"zone": "example.test", "limit": 5},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError || gotQuery != "limit=5&zone=example.test" {
+		t.Fatalf("error=%v query=%q content=%+v", result.IsError, gotQuery, result.Content)
+	}
+}

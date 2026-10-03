@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -38,6 +39,46 @@ func (c *Client) UpdateBlocklistConfig(ctx context.Context, request blocking.Upd
 	headers.Set("X-RillDNS-Actor", actor)
 	if err := c.requestWithHeaders(ctx, http.MethodPut, "/v1/blocklists/config", request, headers, &response); err != nil {
 		return blocking.UpdateResult{}, err
+	}
+	return response, nil
+}
+
+// AuditQuery filters GET /v1/audit. Empty fields are not sent.
+type AuditQuery struct {
+	Zone     string
+	Provider string
+	Actor    string
+	Limit    int
+}
+
+// AuditEvents is decoded generically because native and Cloudflare audit
+// records carry different fields.
+type AuditEvents struct {
+	Events       []map[string]any `json:"events"`
+	SkippedLines int              `json:"skipped_lines"`
+}
+
+func (c *Client) ListAudit(ctx context.Context, query AuditQuery) (AuditEvents, error) {
+	values := url.Values{}
+	if query.Zone != "" {
+		values.Set("zone", query.Zone)
+	}
+	if query.Provider != "" {
+		values.Set("provider", query.Provider)
+	}
+	if query.Actor != "" {
+		values.Set("actor", query.Actor)
+	}
+	if query.Limit > 0 {
+		values.Set("limit", strconv.Itoa(query.Limit))
+	}
+	path := "/v1/audit"
+	if encoded := values.Encode(); encoded != "" {
+		path += "?" + encoded
+	}
+	var response AuditEvents
+	if err := c.request(ctx, http.MethodGet, path, nil, &response); err != nil {
+		return AuditEvents{}, err
 	}
 	return response, nil
 }

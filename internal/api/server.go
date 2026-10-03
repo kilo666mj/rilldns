@@ -47,6 +47,7 @@ type Server struct {
 	haPeerHealthURL       string
 	haPeerStatusURL       string
 	haVIP                 string
+	auditPath             string
 }
 
 type CloudflareReader interface {
@@ -94,6 +95,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /healthz", s.health)
 	mux.HandleFunc("GET /readyz", s.ready)
 	mux.HandleFunc("GET /v1/zones", s.listZones)
+	mux.HandleFunc("GET /v1/audit", s.listAudit)
 	mux.HandleFunc("GET /v1/providers/cloudflare/zones", s.listCloudflareZones)
 	mux.HandleFunc("GET /v1/providers/cloudflare/config", s.getCloudflareConfig)
 	mux.HandleFunc("PUT /v1/providers/cloudflare/config", s.updateCloudflareConfig)

@@ -182,6 +182,22 @@ Set `dry_run` to `false` to commit. A committed batch:
 8. Restores the prior zone if verification fails.
 9. Appends an audit event.
 
+## Audit log
+
+`GET /v1/audit` returns recent events from the append-only audit log
+(`rill-api -audit-log`, default `/var/lib/rilldns/audit.jsonl`), newest first:
+
+```sh
+curl -sS 'http://127.0.0.1:8053/v1/audit?zone=example.test&limit=20'
+```
+
+Optional filters are `zone` (case and trailing dot are ignored), `provider`
+(`rilldns` for native zones or `cloudflare`), and exact `actor`. `limit` is 1 to
+500 and defaults to 100. Events are returned exactly as recorded, so native and
+Cloudflare events carry different fields. Lines that are not valid JSON are
+counted in `skipped_lines` instead of failing the request. The log is scanned
+on each request; rotate it if it grows large.
+
 ## Change format
 
 Upsert replaces the complete RRset:

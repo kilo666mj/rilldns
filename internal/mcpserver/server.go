@@ -64,6 +64,17 @@ type BlocklistUpdateOutput struct {
 	Result blocking.UpdateResult `json:"result"`
 }
 
+type AuditInput struct {
+	Zone     string `json:"zone,omitempty" jsonschema:"Only events for this zone"`
+	Provider string `json:"provider,omitempty" jsonschema:"Only events from rilldns (native zones) or cloudflare"`
+	Actor    string `json:"actor,omitempty" jsonschema:"Only events by this exact actor, for example mcp:apply"`
+	Limit    int    `json:"limit,omitempty" jsonschema:"Maximum events to return, newest first; 1 to 500, default 100"`
+}
+
+type AuditOutput struct {
+	Audit controlclient.AuditEvents `json:"audit"`
+}
+
 type ListZonesOutput struct {
 	Zones []zones.Zone `json:"zones"`
 }
@@ -181,6 +192,12 @@ func New(api *controlclient.Client, dnsAddress string) *mcp.Server {
 		Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive, IdempotentHint: false, OpenWorldHint: &closedWorld},
 	}, service.deleteZone)
 	mcp.AddTool(server, &mcp.Tool{
+		Name:        "dns_list_audit_events",
+		Title:       "List DNS audit events",
+		Description: "Read recent published zone and Cloudflare changes from the append-only audit log, newest first, optionally filtered by zone, provider, or actor.",
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: &closedWorld},
+	}, service.listAudit)
+	mcp.AddTool(server, &mcp.Tool{
 		Name:        "dns_list_zones",
 		Title:       "List DNS zones",
 		Description: "List zones managed by this RillDNS instance, including current SOA serial and revision.",
@@ -274,6 +291,11 @@ func (s *Server) deleteZone(ctx context.Context, _ *mcp.CallToolRequest, input D
 func (s *Server) refreshStatus(ctx context.Context, _ *mcp.CallToolRequest, _ EmptyInput) (*mcp.CallToolResult, RefreshStatusOutput, error) {
 	result, err := s.api.RefreshStatus(ctx)
 	return nil, RefreshStatusOutput{Status: result}, err
+}
+
+func (s *Server) listAudit(ctx context.Context, _ *mcp.CallToolRequest, input AuditInput) (*mcp.CallToolResult, AuditOutput, error) {
+	result, err := s.api.ListAudit(ctx, controlclient.AuditQuery{Zone: input.Zone, Provider: input.Provider, Actor: input.Actor, Limit: input.Limit})
+	return nil, AuditOutput{Audit: result}, err
 }
 
 func (s *Server) listZones(ctx context.Context, _ *mcp.CallToolRequest, _ EmptyInput) (*mcp.CallToolResult, ListZonesOutput, error) {
