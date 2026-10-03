@@ -22,6 +22,8 @@ func main() {
 	output := flag.String("output", "/var/lib/rilldns/imported-zones", "published zone directory")
 	status := flag.String("status", "/var/lib/rilldns/status/secondary.json", "status JSON path")
 	refresh := flag.Duration("refresh", time.Hour, "SOA polling interval")
+	retryMin := flag.Duration("retry-min", 30*time.Second, "first retry delay after a failed zone refresh")
+	retryMax := flag.Duration("retry-max", 15*time.Minute, "maximum retry delay after repeated failures (capped at -refresh)")
 	timeout := flag.Duration("timeout", 15*time.Second, "DNS operation timeout")
 	notifyFrom := flag.String("notify-from", "127.0.0.1", "only accepted NOTIFY source IP")
 	discoverZones := flag.Bool("discover-zones", false, "discover existing zone files and accept new zones notified by the trusted primary")
@@ -37,6 +39,7 @@ func main() {
 		Primary: *primary, ProbePrimary: *probePrimary, Listen: *listen, Zones: strings.Split(*zones, ","), OutputDir: *output,
 		StatusFile: *status, Refresh: *refresh, Timeout: *timeout, NotifyFrom: net.ParseIP(*notifyFrom),
 		TSIGName: *tsigName, TSIGSecret: strings.TrimSpace(string(secret)), DiscoverZones: *discoverZones, MaxZones: *maxZones,
+		RetryMin: *retryMin, RetryMax: *retryMax,
 	})
 	if err != nil {
 		fatal(err)
