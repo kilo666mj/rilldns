@@ -92,7 +92,7 @@ checking format compatibility and SOA serial behavior.
 | Symptom | Safe first checks | Recovery rule |
 | --- | --- | --- |
 | VIP answers fail | Query each node directly over UDP and TCP; inspect keepalived health | Move the VIP only to a node already serving correct answers |
-| Secondary serial is stale | Check NOTIFY delivery, TSIG, AXFR listener, hourly SOA poll, and snapshot timestamp | Keep the standby API read-only until serials match |
+| Secondary serial is stale | Check NOTIFY delivery, TSIG, AXFR listener, hourly SOA poll, failure backoff retries, and snapshot timestamp | Keep the standby API read-only until serials match |
 | Differential check fails | Compare cache-free authorities and inspect the exact record/type mismatch | Do not publish or promote while the mismatch is unexplained |
 | Blocklist refresh fails | Inspect download, compiler, minimum-size guard, and prior snapshot | Preserve the last-known-good compiled list |
 | UI login fails | Verify exact issuer, callback, client ID, clock, and reverse-proxy origin | Do not bypass OIDC by exposing the loopback API |

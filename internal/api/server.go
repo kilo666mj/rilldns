@@ -112,6 +112,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /metrics", s.metrics)
 	mux.HandleFunc("GET /v1/zones/{zone}/rrsets", s.getZone)
 	mux.HandleFunc("POST /v1/zones/{zone}/changes", s.changeZone)
+	mux.HandleFunc("GET /v1/zones/{zone}/revisions", s.listRevisions)
+	mux.HandleFunc("POST /v1/zones/{zone}/rollback", s.rollbackZone)
 	return s.requestLog(mux)
 }
 
@@ -720,6 +722,48 @@ func (s *Server) changeZone(writer http.ResponseWriter, request *http.Request) {
 		actor = request.RemoteAddr
 	}
 	result, err := s.store.Apply(request.Context(), request.PathValue("zone"), input, actor, requestID)
+	if err != nil {
+		s.writeStoreError(writer, err)
+		return
+	}
+	writer.Header().Set("ETag", quoteETag(result.Revision))
+	writeJSON(writer, http.StatusOK, result)
+}
+
+func (s *Server) listRevisions(writer http.ResponseWriter, request *http.Request) {
+	zone, err := s.store.Get(request.PathValue("zone"))
+	if err != nil {
+		s.writeStoreError(writer, err)
+		return
+	}
+	revisions, err := s.store.Revisions(zone.Name)
+	if err != nil {
+		s.writeStoreError(writer, err)
+		return
+	}
+	writer.Header().Set("ETag", quoteETag(zone.Revision))
+	writeJSON(writer, http.StatusOK, map[string]any{"zone": zone.Name, "current_revision": zone.Revision, "current_serial": zone.Serial, "revisions": revisions})
+}
+
+func (s *Server) rollbackZone(writer http.ResponseWriter, request *http.Request) {
+	if s.readOnly {
+		writeError(writer, http.StatusForbidden, "this RillDNS API instance is read-only")
+		return
+	}
+	var input zones.RollbackRequest
+	if !s.decodeJSON(writer, request, &input) {
+		return
+	}
+	if match := request.Header.Get("If-Match"); match != "" {
+		match = strings.Trim(match, `"`)
+		if input.ExpectedRevision != "" && input.ExpectedRevision != match {
+			writeError(writer, http.StatusBadRequest, "If-Match and expected_revision disagree")
+			return
+		}
+		input.ExpectedRevision = match
+	}
+	actor, requestID := s.actorAndRequestID(request)
+	result, err := s.store.Rollback(request.Context(), request.PathValue("zone"), input, actor, requestID)
 	if err != nil {
 		s.writeStoreError(writer, err)
 		return

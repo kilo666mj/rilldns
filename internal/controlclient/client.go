@@ -153,6 +153,34 @@ func (c *Client) Apply(ctx context.Context, zone string, request zones.ChangeReq
 	return response, nil
 }
 
+// ZoneRevisions is the response of GET /v1/zones/{zone}/revisions.
+type ZoneRevisions struct {
+	Zone            string           `json:"zone"`
+	CurrentRevision string           `json:"current_revision"`
+	CurrentSerial   uint32           `json:"current_serial"`
+	Revisions       []zones.Revision `json:"revisions"`
+}
+
+func (c *Client) ListRevisions(ctx context.Context, zone string) (ZoneRevisions, error) {
+	var response ZoneRevisions
+	path := "/v1/zones/" + url.PathEscape(strings.TrimSuffix(zone, ".")) + "/revisions"
+	if err := c.request(ctx, http.MethodGet, path, nil, &response); err != nil {
+		return ZoneRevisions{}, err
+	}
+	return response, nil
+}
+
+func (c *Client) Rollback(ctx context.Context, zone string, request zones.RollbackRequest, actor string) (zones.ChangeResult, error) {
+	var response zones.ChangeResult
+	path := "/v1/zones/" + url.PathEscape(strings.TrimSuffix(zone, ".")) + "/rollback"
+	headers := make(http.Header)
+	headers.Set("X-RillDNS-Actor", actor)
+	if err := c.requestWithHeaders(ctx, http.MethodPost, path, request, headers, &response); err != nil {
+		return zones.ChangeResult{}, err
+	}
+	return response, nil
+}
+
 func (c *Client) CreateZone(ctx context.Context, zone string, request zones.LifecycleRequest, actor string) (zones.LifecycleResult, error) {
 	var response zones.LifecycleResult
 	path := "/v1/zones/" + url.PathEscape(strings.TrimSuffix(zone, "."))

@@ -196,6 +196,50 @@ Set `dry_run` to `false` to commit. A committed batch:
 8. Restores the prior zone if verification fails.
 9. Appends an audit event.
 
+## Revision history and rollback
+
+Every committed change saves the version it replaces under
+`/var/lib/rilldns/history/<zone>/<revision>.zone`. List the retained versions,
+newest first, together with the current revision:
+
+```sh
+curl -sS http://127.0.0.1:8053/v1/zones/example.test/revisions
+```
+
+```json
+{
+  "zone": "example.test.",
+  "current_revision": "9f2c…",
+  "current_serial": 2026081103,
+  "revisions": [
+    {"revision": "41ab…", "serial": 2026081102, "records": 6, "saved_at": "2026-08-11T12:00:00Z"}
+  ]
+}
+```
+
+Roll back to one of them with the current revision in `If-Match` (or
+`expected_revision`) and the history revision in `target_revision`:
+
+```sh
+curl -sS -X POST \
+  -H "If-Match: \"$revision\"" \
+  -H 'Content-Type: application/json' \
+  -H 'X-RillDNS-Actor: operator' \
+  http://127.0.0.1:8053/v1/zones/example.test/rollback \
+  -d '{"target_revision": "41ab…", "dry_run": true}'
+```
+
+The response has the same shape as a change result, with `rollback_to` set and
+`changes` listing the RRset upserts and deletes that the rollback performs
+relative to the current zone. Set `dry_run` to `false` to commit. A rollback
+goes through the same publication path as a change: the current version is
+saved to history, the restored records are published with a new, higher SOA
+serial so secondaries accept them, CoreDNS must serve that serial or the prior
+zone is restored, and an audit event with `rollback_to` is appended. Because
+the serial differs, the resulting revision is new rather than equal to the
+target revision. History files whose content no longer matches their revision
+are refused.
+
 ## Change format
 
 Upsert replaces the complete RRset:
@@ -226,6 +270,5 @@ SOA records cannot be changed directly. CNAME coexistence, apex SOA/NS requireme
 
 - Loopback access only; remote OAuth and role-based authorization come later.
 - No idempotency-key store yet.
-- No rollback endpoint yet, although prior versions are retained.
 - Zones with the `secondary` role reject RRset mutations; lifecycle deletion
   still requires an exact revision.

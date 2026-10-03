@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -100,5 +101,27 @@ func TestRefreshBlocklistsTool(t *testing.T) {
 	}
 	if result.IsError || gotMethod != http.MethodPost || gotPath != "/v1/blocklists/refresh" || gotActor != "mcp:blocklist-refresh" {
 		t.Fatalf("error=%v %s %s actor=%q", result.IsError, gotMethod, gotPath, gotActor)
+	}
+}
+
+func TestRollbackToolPreviewsUnlessConfirmed(t *testing.T) {
+	var gotPath, gotBody string
+	session, cleanup := connectTestMCP(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		body, _ := io.ReadAll(request.Body)
+		gotPath, gotBody = request.URL.Path, string(body)
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"zone":"example.test.","rollback_to":"target","dry_run":true}`))
+	}))
+	defer cleanup()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "dns_rollback_zone",
+		Arguments: map[string]any{"zone": "example.test", "expected_revision": "current", "target_revision": "target", "confirm": false},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError || gotPath != "/v1/zones/example.test/rollback" || !strings.Contains(gotBody, `"dry_run":true`) || !strings.Contains(gotBody, `"target_revision":"target"`) {
+		t.Fatalf("result error=%v path=%q body=%s", result.IsError, gotPath, gotBody)
 	}
 }

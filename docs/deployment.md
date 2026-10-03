@@ -30,7 +30,12 @@ and is not part of the two-node reference deployment.
 The primary publishes validated zone files atomically and sends DNS NOTIFY to
 the secondary. The persistent `rill-secondary` daemon compares SOA serials and
 requests a TSIG-authenticated AXFR from a cache-free authority when a serial
-changes. An hourly SOA poll covers lost NOTIFY messages.
+changes. An hourly SOA poll covers lost NOTIFY messages. A zone whose refresh
+fails is retried with exponential backoff, from `-retry-min` (30s) up to
+`-retry-max` (15m, never longer than `-refresh`), so a transient error at boot
+clears in seconds rather than at the next poll. On restart the daemon keeps the
+previous `last_success` from its status file and reports zones already on disk,
+so a restart alone does not make refresh look stale.
 
 ```text
 dns-primary:1056 -- TSIG AXFR/NOTIFY --> dns-secondary:1054
