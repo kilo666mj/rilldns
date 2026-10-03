@@ -121,6 +121,17 @@ type ChangeOutput struct {
 	Result zones.ChangeResult `json:"result"`
 }
 
+type RevisionsOutput struct {
+	Revisions controlclient.ZoneRevisions `json:"revisions"`
+}
+
+type RollbackInput struct {
+	Zone             string `json:"zone" jsonschema:"Existing primary DNS zone to roll back"`
+	ExpectedRevision string `json:"expected_revision" jsonschema:"Exact current revision returned by dns_list_revisions or dns_list_records"`
+	TargetRevision   string `json:"target_revision" jsonschema:"History revision to restore, as listed by dns_list_revisions"`
+	Confirm          bool   `json:"confirm" jsonschema:"Must be true to publish; false previews the RRset differences"`
+}
+
 type CreateZoneInput struct {
 	Zone     string `json:"zone" jsonschema:"Canonical DNS zone name"`
 	Role     string `json:"role" jsonschema:"Zone role: primary or secondary"`
@@ -230,6 +241,18 @@ func New(api *controlclient.Client, dnsAddress string) *mcp.Server {
 		Description: "Commit a previously reviewed atomic RRset change batch. Requires the current revision and confirm=true. RillDNS validates, publishes, verifies, audits, and rolls back on failure.",
 		Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive, IdempotentHint: false, OpenWorldHint: &closedWorld},
 	}, service.applyChanges)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "dns_list_revisions",
+		Title:       "List zone revisions",
+		Description: "List prior versions of a managed zone retained in history, newest first, with the current revision. Use a listed revision as a rollback target.",
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: &closedWorld},
+	}, service.listRevisions)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "dns_rollback_zone",
+		Title:       "Roll back DNS zone",
+		Description: "Restore a primary zone's records from a history revision with a new SOA serial. Requires the current revision; confirm=false previews the RRset differences, confirm=true publishes, verifies, audits, and restores the prior zone on failure.",
+		Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive, IdempotentHint: false, OpenWorldHint: &closedWorld},
+	}, service.rollbackZone)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "dns_test_resolution",
 		Title:       "Test DNS resolution",
@@ -356,6 +379,24 @@ func (s *Server) applyChanges(ctx context.Context, _ *mcp.CallToolRequest, input
 		ExpectedRevision: input.ExpectedRevision,
 		Changes:          input.Changes,
 	}, "mcp:apply")
+	return nil, ChangeOutput{Result: result}, err
+}
+
+func (s *Server) listRevisions(ctx context.Context, _ *mcp.CallToolRequest, input ZoneInput) (*mcp.CallToolResult, RevisionsOutput, error) {
+	if strings.TrimSpace(input.Zone) == "" {
+		return nil, RevisionsOutput{}, errors.New("zone is required")
+	}
+	result, err := s.api.ListRevisions(ctx, input.Zone)
+	return nil, RevisionsOutput{Revisions: result}, err
+}
+
+func (s *Server) rollbackZone(ctx context.Context, _ *mcp.CallToolRequest, input RollbackInput) (*mcp.CallToolResult, ChangeOutput, error) {
+	if strings.TrimSpace(input.Zone) == "" || strings.TrimSpace(input.ExpectedRevision) == "" || strings.TrimSpace(input.TargetRevision) == "" {
+		return nil, ChangeOutput{}, errors.New("zone, expected_revision, and target_revision are required")
+	}
+	result, err := s.api.Rollback(ctx, input.Zone, zones.RollbackRequest{
+		ExpectedRevision: input.ExpectedRevision, TargetRevision: input.TargetRevision, DryRun: !input.Confirm,
+	}, "mcp:rollback")
 	return nil, ChangeOutput{Result: result}, err
 }
 
