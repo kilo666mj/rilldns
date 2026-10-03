@@ -266,3 +266,125 @@ func TestCreateRejectsOriginMismatchAndRollsBackVerification(t *testing.T) {
 		t.Fatalf("failed create was not rolled back: %v", err)
 	}
 }
+
+func TestRollbackRestoresHistoryRevisionWithNewSerial(t *testing.T) {
+	verifier := new(serialVerifier)
+	store, _ := newTestStore(t, verifier)
+	original, _ := store.Get("example.test")
+	changed, err := store.Apply(context.Background(), original.Name, ChangeRequest{
+		ExpectedRevision: original.Revision,
+		Changes: []Change{
+			{Action: "upsert", Name: "www", Type: "A", TTL: 120, Records: []string{"192.0.2.20"}},
+			{Action: "upsert", Name: "new", Type: "TXT", TTL: 300, Records: []string{`"added"`}},
+		},
+	}, "unit-test", "req-change")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	revisions, err := store.Revisions("example.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(revisions) != 1 || revisions[0].Revision != original.Revision || revisions[0].Serial != original.Serial {
+		t.Fatalf("revisions = %+v", revisions)
+	}
+
+	plan, err := store.Rollback(context.Background(), "example.test", RollbackRequest{
+		ExpectedRevision: changed.Revision, TargetRevision: original.Revision, DryRun: true,
+	}, "unit-test", "req-plan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Published || plan.RollbackTo != original.Revision || len(plan.Changes) != 2 {
+		t.Fatalf("plan = %+v", plan)
+	}
+	actions := map[string]string{}
+	for _, change := range plan.Changes {
+		actions[change.Name+"/"+change.Type] = change.Action
+	}
+	if actions["www.example.test./A"] != "upsert" || actions["new.example.test./TXT"] != "delete" {
+		t.Fatalf("plan changes = %+v", plan.Changes)
+	}
+	if current, _ := store.Get("example.test"); current.Revision != changed.Revision {
+		t.Fatal("dry-run rollback modified the zone")
+	}
+
+	result, err := store.Rollback(context.Background(), "example.test", RollbackRequest{
+		ExpectedRevision: changed.Revision, TargetRevision: original.Revision,
+	}, "unit-test", "req-rollback")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Published || result.Serial <= changed.Serial || verifier.got != result.Serial {
+		t.Fatalf("rollback result = %+v, verifier serial %d", result, verifier.got)
+	}
+	restored, err := store.Get("example.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	restoredWithoutSOA, originalWithoutSOA := withoutSOA(restored.RRsets), withoutSOA(original.RRsets)
+	if len(restoredWithoutSOA) != len(originalWithoutSOA) {
+		t.Fatalf("restored RRsets = %+v", restored.RRsets)
+	}
+	for i := range originalWithoutSOA {
+		if strings.Join(restoredWithoutSOA[i].Records, ",") != strings.Join(originalWithoutSOA[i].Records, ",") || restoredWithoutSOA[i].TTL != originalWithoutSOA[i].TTL {
+			t.Fatalf("restored %+v, want %+v", restoredWithoutSOA[i], originalWithoutSOA[i])
+		}
+	}
+	audit, err := os.ReadFile(store.audit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(audit), `"rollback_to":"`+original.Revision+`"`) {
+		t.Fatalf("rollback audit event missing: %s", audit)
+	}
+	if revisions, _ := store.Revisions("example.test"); len(revisions) != 2 {
+		t.Fatalf("the rolled-back-from revision was not retained: %+v", revisions)
+	}
+}
+
+func TestRollbackRejectsInvalidTargets(t *testing.T) {
+	store, _ := newTestStore(t, nil)
+	original, _ := store.Get("example.test")
+	changed, err := store.Apply(context.Background(), original.Name, ChangeRequest{
+		ExpectedRevision: original.Revision,
+		Changes:          []Change{{Action: "delete", Name: "api", Type: "CNAME"}},
+	}, "unit-test", "req-change")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		name    string
+		request RollbackRequest
+		want    error
+	}{
+		{"stale", RollbackRequest{ExpectedRevision: original.Revision, TargetRevision: original.Revision}, ErrRevisionMismatch},
+		{"traversal", RollbackRequest{ExpectedRevision: changed.Revision, TargetRevision: "../example.test"}, ErrInvalidChange},
+		{"current", RollbackRequest{ExpectedRevision: changed.Revision, TargetRevision: changed.Revision}, ErrInvalidChange},
+		{"unknown", RollbackRequest{ExpectedRevision: changed.Revision, TargetRevision: strings.Repeat("0", 64)}, ErrNotFound},
+	}
+	for _, tc := range cases {
+		if _, err := store.Rollback(context.Background(), "example.test", tc.request, "unit-test", tc.name); !errors.Is(err, tc.want) {
+			t.Errorf("%s: err = %v, want %v", tc.name, err, tc.want)
+		}
+	}
+
+	historyPath := filepath.Join(store.history, "example.test", original.Revision+".zone")
+	if err := os.WriteFile(historyPath, []byte(strings.Replace(testZone, "192.0.2.10", "192.0.2.99", 1)), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Rollback(context.Background(), "example.test", RollbackRequest{ExpectedRevision: changed.Revision, TargetRevision: original.Revision}, "unit-test", "tampered"); !errors.Is(err, ErrInvalidChange) {
+		t.Fatalf("tampered history file: err = %v", err)
+	}
+}
+
+func withoutSOA(sets []RRset) []RRset {
+	result := make([]RRset, 0, len(sets))
+	for _, set := range sets {
+		if set.Type != "SOA" {
+			result = append(result, set)
+		}
+	}
+	return result
+}

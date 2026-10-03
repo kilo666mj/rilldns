@@ -11,6 +11,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -97,8 +98,26 @@ type ChangeRequest struct {
 	Changes          []Change `json:"changes"`
 }
 
+// RollbackRequest restores a zone to a revision retained in its history. The
+// restored content keeps the target's records but receives a new, higher SOA
+// serial so that secondaries and caches accept it as an update.
+type RollbackRequest struct {
+	ExpectedRevision string `json:"expected_revision"`
+	TargetRevision   string `json:"target_revision"`
+	DryRun           bool   `json:"dry_run"`
+}
+
+// Revision describes one prior zone version retained in history.
+type Revision struct {
+	Revision string    `json:"revision"`
+	Serial   uint32    `json:"serial"`
+	Records  int       `json:"records"`
+	SavedAt  time.Time `json:"saved_at"`
+}
+
 type ChangeResult struct {
 	Zone             string   `json:"zone"`
+	RollbackTo       string   `json:"rollback_to,omitempty"`
 	DryRun           bool     `json:"dry_run"`
 	PreviousRevision string   `json:"previous_revision"`
 	Revision         string   `json:"revision"`
@@ -120,6 +139,7 @@ type auditEvent struct {
 	PreviousSerial   uint32    `json:"previous_serial"`
 	Serial           uint32    `json:"serial"`
 	Changes          []Change  `json:"changes"`
+	RollbackTo       string    `json:"rollback_to,omitempty"`
 }
 
 func NewStore(dir, auditPath string, verifier Verifier) *Store {
@@ -211,7 +231,14 @@ func (s *Store) Apply(ctx context.Context, name string, request ChangeRequest, a
 	if err := validate(current.Name, rrs); err != nil {
 		return ChangeResult{}, err
 	}
+	return s.commit(ctx, current, rrs, request.Changes, request.DryRun, "", actor, requestID)
+}
 
+// commit gives rrs the next SOA serial and, unless dryRun, publishes them in
+// place of current: it saves current to history, writes the zone, waits for
+// CoreDNS to serve the new serial (restoring current if it does not), sends
+// NOTIFY, and appends the audit record. The caller must hold s.mu.
+func (s *Store) commit(ctx context.Context, current Zone, rrs []dns.RR, changes []Change, dryRun bool, rollbackTo, actor, requestID string) (ChangeResult, error) {
 	serial, err := nextSerial(current.Serial, s.now().UTC())
 	if err != nil {
 		return ChangeResult{}, err
@@ -221,15 +248,16 @@ func (s *Store) Apply(ctx context.Context, name string, request ChangeRequest, a
 	revision := revision(content)
 	result := ChangeResult{
 		Zone:             current.Name,
-		DryRun:           request.DryRun,
+		RollbackTo:       rollbackTo,
+		DryRun:           dryRun,
 		PreviousRevision: current.Revision,
 		Revision:         revision,
 		PreviousSerial:   current.Serial,
 		Serial:           serial,
-		Changes:          request.Changes,
+		Changes:          changes,
 		RequestID:        requestID,
 	}
-	if request.DryRun {
+	if dryRun {
 		return result, nil
 	}
 
@@ -267,11 +295,129 @@ func (s *Store) Apply(ctx context.Context, name string, request ChangeRequest, a
 		Revision:         revision,
 		PreviousSerial:   current.Serial,
 		Serial:           serial,
-		Changes:          request.Changes,
+		Changes:          changes,
+		RollbackTo:       rollbackTo,
 	}); err != nil {
 		return result, fmt.Errorf("zone published but audit append failed: %w", err)
 	}
 	return result, nil
+}
+
+// Revisions lists the prior versions of a zone retained in history, newest
+// first. The current version is not included; Get reports it.
+func (s *Store) Revisions(name string) ([]Revision, error) {
+	current, err := s.Get(name)
+	if err != nil {
+		return nil, err
+	}
+	directory := filepath.Join(s.history, strings.TrimSuffix(current.Name, "."))
+	entries, err := os.ReadDir(directory)
+	if errors.Is(err, os.ErrNotExist) {
+		return []Revision{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	revisions := make([]Revision, 0, len(entries))
+	for _, entry := range entries {
+		id, ok := strings.CutSuffix(entry.Name(), ".zone")
+		if entry.IsDir() || !ok || !validRevision(id) {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return nil, err
+		}
+		zone, err := s.loadPath(filepath.Join(directory, entry.Name()))
+		if err != nil {
+			// A history file that no longer parses cannot be restored, so it is
+			// not offered as a rollback target.
+			continue
+		}
+		revisions = append(revisions, Revision{Revision: id, Serial: zone.Serial, Records: len(zone.rrs), SavedAt: info.ModTime().UTC()})
+	}
+	sort.Slice(revisions, func(i, j int) bool {
+		if revisions[i].SavedAt.Equal(revisions[j].SavedAt) {
+			return revisions[i].Serial > revisions[j].Serial
+		}
+		return revisions[i].SavedAt.After(revisions[j].SavedAt)
+	})
+	return revisions, nil
+}
+
+// Rollback republishes the records of a retained history revision through the
+// same verified publication path as Apply. Changes in the result describe the
+// RRset differences from the current zone, excluding the SOA.
+func (s *Store) Rollback(ctx context.Context, name string, request RollbackRequest, actor, requestID string) (ChangeResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	current, err := s.Get(name)
+	if err != nil {
+		return ChangeResult{}, err
+	}
+	if current.Role != "primary" {
+		return ChangeResult{}, ErrReadOnlyZone
+	}
+	if request.ExpectedRevision == "" || request.ExpectedRevision != current.Revision {
+		return ChangeResult{}, ErrRevisionMismatch
+	}
+	if !validRevision(request.TargetRevision) {
+		return ChangeResult{}, fmt.Errorf("%w: target_revision must be a revision listed in the zone history", ErrInvalidChange)
+	}
+	if request.TargetRevision == current.Revision {
+		return ChangeResult{}, fmt.Errorf("%w: target_revision is already the current revision", ErrInvalidChange)
+	}
+	path := filepath.Join(s.history, strings.TrimSuffix(current.Name, "."), request.TargetRevision+".zone")
+	target, err := s.loadPath(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return ChangeResult{}, fmt.Errorf("%w: revision %s is not in the history of %s", ErrNotFound, request.TargetRevision, current.Name)
+	}
+	if err != nil {
+		return ChangeResult{}, err
+	}
+	if target.Name != current.Name {
+		return ChangeResult{}, fmt.Errorf("%w: history revision origin %s does not match zone %s", ErrInvalidChange, target.Name, current.Name)
+	}
+	if revision(target.content) != request.TargetRevision {
+		return ChangeResult{}, fmt.Errorf("%w: history file for revision %s has been modified", ErrInvalidChange, request.TargetRevision)
+	}
+	changes := diffRRsets(current.RRsets, target.RRsets)
+	return s.commit(ctx, current, cloneRRs(target.rrs), changes, request.DryRun, request.TargetRevision, actor, requestID)
+}
+
+// diffRRsets returns the upserts and deletes that turn from into to, ignoring
+// the SOA, whose serial always differs.
+func diffRRsets(from, to []RRset) []Change {
+	type key struct{ name, rrtype string }
+	existing := make(map[key]RRset, len(from))
+	for _, set := range from {
+		existing[key{set.Name, set.Type}] = set
+	}
+	changes := []Change{}
+	for _, set := range to {
+		k := key{set.Name, set.Type}
+		old, ok := existing[k]
+		delete(existing, k)
+		if set.Type == "SOA" || (ok && old.TTL == set.TTL && slices.Equal(old.Records, set.Records)) {
+			continue
+		}
+		changes = append(changes, Change{Action: "upsert", Name: set.Name, Type: set.Type, TTL: set.TTL, Records: set.Records})
+	}
+	for _, set := range from {
+		if _, ok := existing[key{set.Name, set.Type}]; ok && set.Type != "SOA" {
+			changes = append(changes, Change{Action: "delete", Name: set.Name, Type: set.Type})
+		}
+	}
+	return changes
+}
+
+func validRevision(value string) bool {
+	if len(value) != sha256.Size*2 {
+		return false
+	}
+	_, err := hex.DecodeString(value)
+	return err == nil && strings.ToLower(value) == value
 }
 
 func (s *Store) Create(ctx context.Context, name string, request LifecycleRequest, actor, requestID string) (LifecycleResult, error) {
