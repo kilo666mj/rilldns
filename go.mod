@@ -2,6 +2,8 @@ module github.com/kilo666mj/rilldns
 
 go 1.27.1
 
+toolchain go1.27.3
+
 require (
 	github.com/dnstap/golang-dnstap v0.4.0
 	github.com/miekg/dns v1.1.73
