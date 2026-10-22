@@ -9,14 +9,14 @@ require (
 	github.com/miekg/dns v1.1.73
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	go.michaelspost.com/mcpkit v0.2.0
-	go.michaelspost.com/oidcrp v0.3.0
+	go.michaelspost.com/oidcrp v0.4.1
 	google.golang.org/protobuf v1.36.12
 )
 
 require (
 	github.com/coreos/go-oidc/v3 v3.21.0 // indirect
 	github.com/farsightsec/golang-framestream v0.3.0 // indirect
-	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.6 // indirect
 	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/segmentio/asm v1.1.3 // indirect
 	github.com/segmentio/encoding v0.5.4 // indirect
