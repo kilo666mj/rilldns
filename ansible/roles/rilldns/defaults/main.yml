@@ -1,7 +1,7 @@
 ---
 rilldns_release_base_url: "https://github.com/kilo666mj/rilldns/releases/download"
 rilldns_release_checksum: ""
-rilldns_coredns_version: "1.14.7"
+rilldns_coredns_version: "1.15.0"
 rilldns_coredns_base_url: "https://github.com/coredns/coredns/releases/download"
 rilldns_coredns_checksum: ""
 rilldns_user: rilldns
