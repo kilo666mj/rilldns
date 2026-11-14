@@ -2,7 +2,7 @@ module github.com/kilo666mj/rilldns
 
 go 1.27.1
 
-toolchain go1.27.3
+toolchain go1.27.4
 
 require (
 	github.com/dnstap/golang-dnstap v0.4.0
